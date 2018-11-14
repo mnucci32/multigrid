@@ -1,0 +1,10 @@
+# Ignore temporary copy files
+*~
+\#*
+
+# Ignore python compilation files
+__pycache__
+*.pyc
+
+# Ignore VS Code files
+.vscode/
