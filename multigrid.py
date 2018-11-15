@@ -87,7 +87,7 @@ class gridLevel:
       # loop over interior solution
       for xx in range(1, self.solution.shape[0] - 1):
         for yy in range(1, self.solution.shape[1] - 1):
-          self.solution[xx, yy] = 0.25 * self.area * \
+          self.solution[xx, yy] = 0.25 * \
               (self.solution[xx - 1, yy] + self.solution[xx + 1, yy] + \
               self.solution[xx, yy - 1] + self.solution[xx, yy + 1])
 
