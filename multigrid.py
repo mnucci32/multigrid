@@ -58,34 +58,12 @@ class gridLevel:
     self.solution = np.zeros((xNum + 1, yNum + 1))
     self.residual = np.zeros((xNum - 1, yNum - 1))
 
-  def CalcGradFaceX(self):
-    gradient = np.zeros((self.coords.shape[0], self.solution.shape[1]))
-    # calculate gradient on boundaries
-    gradient[0,:] = (self.solution[0,:] - self.xLower) / (0.5 * self.dx)
-    gradient[-1,:] = (self.xUpper - self.solution[-1,:]) / (0.5 * self.dx)
-    # calculate gradient on interior
-    for xx in range(1, gradient.shape[0] - 1):
-      for yy in range(1, gradient.shape[1] - 1):
-        gradient[xx,yy] = (self.solution[xx,yy] - self.solution[xx - 1,yy]) / self.dx
-    return gradient
-
-  def CalcGradFaceY(self):
-    gradient = np.zeros((self.solution.shape[0], self.coords.shape[1]))
-    # calculate gradient on boundaries
-    gradient[:,0] = (self.solution[:,0] - self.yLower) / (0.5 * self.dy)
-    gradient[:,-1] = (self.yUpper - self.solution[:,-1]) / (0.5 * self.dy)
-    # calculate gradient on interior
-    for xx in range(1, gradient.shape[0] - 1):
-      for yy in range(1, gradient.shape[1] - 1):
-        gradient[xx,yy] = (self.solution[xx,yy] - self.solution[xx,yy - 1]) / self.dx
-    return gradient
-  
   def Laplacian(self, xx, yy):
     return -4.0 * self.solution[xx,yy] + self.solution[xx-1,yy] + \
-        self.solution[xx + 1, yy] + self.solution[xx, yy - 1] + self.solution[xx, yy + 1]
+        self.solution[xx + 1, yy] + self.solution[xx, yy - 1] + \
+        self.solution[xx, yy + 1]
             
-  def GaussSeidel(self):
-    # assign boundary conditions
+  def AssignBCs(self):
     xl = np.zeros((self.numNodesY - 1))
     xu = np.zeros((self.numNodesY - 1))
     for ii in range(0, len(xl)):
@@ -102,6 +80,9 @@ class gridLevel:
     self.solution[1:-1, 0] = yl
     self.solution[1:-1, -1] = yu
 
+  def GaussSeidel(self):
+    # assign boundary conditions
+    self.AssignBCs()
     for ss in range(0, self.sweeps):
       # loop over interior solution
       for xx in range(1, self.solution.shape[0] - 1):
@@ -112,21 +93,14 @@ class gridLevel:
 
 
   def CalcResidual(self):
-    # calculate gradient on x-faces and y-faces
-    xGrad = self.CalcGradFaceX()
-    yGrad = self.CalcGradFaceY()
+    # assign boundary conditions
+    self.AssignBCs()
     # loop over cells and calculate residual
     self.residual = np.zeros(self.residual.shape)
     for xx in range(0, self.residual.shape[0]):
       for yy in range(0, self.residual.shape[1]):
-        #self.residual[xx,yy] = self.nu * self.Laplacian(xx, yy) / self.area
-        self.residual[xx,yy] += self.nu * (xGrad[xx + 1,yy] - xGrad[xx,yy]) / self.dx
-        self.residual[xx,yy] += self.nu * (yGrad[xx,yy + 1] - yGrad[xx,yy]) / self.dy
-
-  def UpdateSolution(self):
-    self.CalcResidual()
-    self.solution += self.dt * self.residual
-    print(self.solution)
+        self.residual[xx, yy] = self.nu * self.Laplacian(xx + 1, yy + 1) \
+            / self.area
 
   def ToNodes(self):
     # initialize nodal solution
@@ -137,8 +111,8 @@ class gridLevel:
     nodalSolution[:, 0] = self.yLower
     nodalSolution[:, -1] = self.yUpper
     # loop over interior nodes
-    for xx in range(1, nodalSolution.shape[0] - 1):
-      for yy in range(1, nodalSolution.shape[1] - 1):
+    for xx in range(1, self.numNodesX - 1):
+      for yy in range(1, self.numNodesY - 1):
         nodalSolution[xx, yy] = 0.25 * (self.solution[xx + 1, yy] + \
             self.solution[xx, yy] + self.solution[xx + 1, yy + 1] + \
             self.solution[xx, yy + 1])
@@ -197,9 +171,6 @@ class mgSolution:
 
   def Print(self):
     self.levels[0].Print()
-
-  def UpdateSolution(self):
-    self.levels[0].UpdateSolution()
 
   def ResidNorm(self, nn):
     r = self.levels[0].residual
