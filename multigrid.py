@@ -6,9 +6,6 @@ import matplotlib as mpl
 
 mpl.rcParams["font.size"] = 20
 
-def CountFlops():
-  return 0
-
 def LinearInterp(x0, x1, d0, d1, x):
   diff = x1 - x0
   dist = np.sqrt(np.dot(diff, diff))
@@ -52,9 +49,9 @@ class gridLevel:
     self.nu = nu
     self.dt = self.area / (4.0 * self.nu)
     self.xLower = 100.0
-    self.xUpper = 100.0
+    self.xUpper = 200.0
     self.yLower = 100.0
-    self.yUpper = 100.0
+    self.yUpper = 200.0
     self.solution = np.zeros((xNum - 1, yNum - 1))
     self.residual = np.zeros((xNum - 1, yNum - 1))
 
@@ -80,13 +77,17 @@ class gridLevel:
       for yy in range(1, gradient.shape[1] - 1):
         gradient[xx,yy] = (self.solution[xx,yy] - self.solution[xx,yy - 1]) / self.dx
     return gradient
+  
+  def Laplacian(self, xx, yy):
+    return -4.0 * self.solution[xx,yy] + self.solution[xx-1,yy] + \
+        self.solution[xx+1,yy] + self.solution[xx,yy-1] + self.solution[xx,yy+1]
 
   def CalcResidual(self):
+    # assign boundary conditions
+
     # calculate gradient on x-faces and y-faces
     xGrad = self.CalcGradFaceX()
-    print(xGrad)
     yGrad = self.CalcGradFaceY()
-    print(yGrad)
     # loop over cells and calculate residual
     self.residual = np.zeros(self.residual.shape)
     for xx in range(0, self.residual.shape[0]):
@@ -96,7 +97,6 @@ class gridLevel:
 
   def UpdateSolution(self):
     self.CalcResidual()
-    print(self.residual)
     self.solution += self.dt * self.residual
     print(self.solution)
 
@@ -108,7 +108,7 @@ class gridLevel:
     cf = ax.contourf(self.centers[:,:, 0], self.centers[:,:, 1], self.solution)
     cbar = fig.colorbar(cf)
     cbar.ax.set_ylabel("Temperature (K)")
-    ax.grid("on")
+    ax.grid(True)
     plt.tight_layout()
     plt.show()
 
