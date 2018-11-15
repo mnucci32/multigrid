@@ -33,6 +33,8 @@ class gridLevel:
   def __init__(self, xRange, xNum, yRange, yNum, nu):
     xc = np.linspace(xRange[0], xRange[1], xNum)
     yc = np.linspace(yRange[0], yRange[1], yNum)
+    self.numNodesX = xNum
+    self.numNodesY = yNum
     self.coords = np.zeros((xNum, yNum, 2))
     for xx in range(0, xNum):
       for yy in range(0, yNum):
@@ -48,17 +50,17 @@ class gridLevel:
         self.centers[xx, yy, 1] = yc[yy] + self.dy / 2.0
     self.nu = nu
     self.dt = self.area / (4.0 * self.nu)
-    self.xLower = 100.0
-    self.xUpper = 200.0
-    self.yLower = 100.0
-    self.yUpper = 200.0
-    self.solution = np.zeros((xNum - 1, yNum - 1))
+    self.xLower = np.linspace(100.0, 150.0, yNum)
+    self.xUpper = np.linspace(150.0, 200.0, yNum)
+    self.yLower = np.linspace(100.0, 150.0, xNum)
+    self.yUpper = np.linspace(150.0, 200.0, xNum)
+    self.sweeps = 5
+    self.solution = np.zeros((xNum + 1, yNum + 1))
     self.residual = np.zeros((xNum - 1, yNum - 1))
 
   def CalcGradFaceX(self):
     gradient = np.zeros((self.coords.shape[0], self.solution.shape[1]))
     # calculate gradient on boundaries
-    print(self.dx, self.dy, self.area)
     gradient[0,:] = (self.solution[0,:] - self.xLower) / (0.5 * self.dx)
     gradient[-1,:] = (self.xUpper - self.solution[-1,:]) / (0.5 * self.dx)
     # calculate gradient on interior
@@ -80,11 +82,36 @@ class gridLevel:
   
   def Laplacian(self, xx, yy):
     return -4.0 * self.solution[xx,yy] + self.solution[xx-1,yy] + \
-        self.solution[xx+1,yy] + self.solution[xx,yy-1] + self.solution[xx,yy+1]
+        self.solution[xx + 1, yy] + self.solution[xx, yy - 1] + self.solution[xx, yy + 1]
+            
+  def GaussSeidel(self):
+    # assign boundary conditions
+    xl = np.zeros((self.numNodesY - 1))
+    xu = np.zeros((self.numNodesY - 1))
+    for ii in range(0, len(xl)):
+      xl[ii] = 0.5 * (self.xLower[ii] + self.xLower[ii + 1])
+      xu[ii] = 0.5 * (self.xUpper[ii] + self.xUpper[ii + 1])
+    yl = np.zeros((self.numNodesX - 1))
+    yu = np.zeros((self.numNodesX - 1))
+    for ii in range(0, len(yl)):
+      yl[ii] = 0.5 * (self.yLower[ii] + self.yLower[ii + 1])
+      yu[ii] = 0.5 * (self.yUpper[ii] + self.yUpper[ii + 1])
+
+    self.solution[0, 1:-1] = xl
+    self.solution[-1, 1:-1] = xu
+    self.solution[1:-1, 0] = yl
+    self.solution[1:-1, -1] = yu
+
+    for ss in range(0, self.sweeps):
+      # loop over interior solution
+      for xx in range(1, self.solution.shape[0] - 1):
+        for yy in range(1, self.solution.shape[1] - 1):
+          self.solution[xx, yy] = 0.25 * self.area * \
+              (self.solution[xx - 1, yy] + self.solution[xx + 1, yy] + \
+              self.solution[xx, yy - 1] + self.solution[xx, yy + 1])
+
 
   def CalcResidual(self):
-    # assign boundary conditions
-
     # calculate gradient on x-faces and y-faces
     xGrad = self.CalcGradFaceX()
     yGrad = self.CalcGradFaceY()
@@ -92,6 +119,7 @@ class gridLevel:
     self.residual = np.zeros(self.residual.shape)
     for xx in range(0, self.residual.shape[0]):
       for yy in range(0, self.residual.shape[1]):
+        #self.residual[xx,yy] = self.nu * self.Laplacian(xx, yy) / self.area
         self.residual[xx,yy] += self.nu * (xGrad[xx + 1,yy] - xGrad[xx,yy]) / self.dx
         self.residual[xx,yy] += self.nu * (yGrad[xx,yy + 1] - yGrad[xx,yy]) / self.dy
 
@@ -100,18 +128,53 @@ class gridLevel:
     self.solution += self.dt * self.residual
     print(self.solution)
 
-  def Plot(self):
+  def ToNodes(self):
+    # initialize nodal solution
+    nodalSolution = np.zeros((self.numNodesX, self.numNodesY))
+    # assign boundary conditions
+    nodalSolution[0,:] = self.xLower
+    nodalSolution[-1,:] = self.xUpper
+    nodalSolution[:, 0] = self.yLower
+    nodalSolution[:, -1] = self.yUpper
+    # loop over interior nodes
+    for xx in range(1, nodalSolution.shape[0] - 1):
+      for yy in range(1, nodalSolution.shape[1] - 1):
+        nodalSolution[xx, yy] = 0.25 * (self.solution[xx + 1, yy] + \
+            self.solution[xx, yy] + self.solution[xx + 1, yy + 1] + \
+            self.solution[xx, yy + 1])
+    return nodalSolution
+
+  def PlotCenter(self):
     fig, ax = plt.subplots(figsize=(12, 8))
     plt.xlabel("X (m)")
     plt.ylabel("Y (m)")
     plt.title("Temperature Contour")
-    cf = ax.contourf(self.centers[:,:, 0], self.centers[:,:, 1], self.solution)
+    cf = ax.contourf(self.centers[:,:, 0], self.centers[:,:, 1], \
+        self.solution[1:-1,1:-1])
     cbar = fig.colorbar(cf)
     cbar.ax.set_ylabel("Temperature (K)")
     ax.grid(True)
     plt.tight_layout()
     plt.show()
 
+  def PlotNode(self):
+    fig, ax = plt.subplots(figsize=(12, 8))
+    plt.xlabel("X (m)")
+    plt.ylabel("Y (m)")
+    plt.title("Temperature Contour")
+    nodalSolution = self.ToNodes()
+    cf = ax.contourf(self.coords[:,:, 0], self.coords[:,:, 1], nodalSolution)
+    cbar = fig.colorbar(cf)
+    cbar.ax.set_ylabel("Temperature (K)")
+    ax.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+  def Print(self):
+    print("CELL CENTER SOLUTION")
+    print(self.solution)
+    print("NODAL SOLUTION")
+    print(self.ToNodes())
 
 class mgSolution:
   def __init__(self, xRange, xNum, yRange, yNum, nu, levels):
@@ -126,8 +189,14 @@ class mgSolution:
       grid = gridLevel(xRange, xn, yRange, yn, nu)
       self.levels.append(grid)
 
-  def Plot(self):
-    self.levels[0].Plot()
+  def PlotCenter(self):
+    self.levels[0].PlotCenter()
+
+  def PlotNode(self):
+    self.levels[0].PlotNode()
+
+  def Print(self):
+    self.levels[0].Print()
 
   def UpdateSolution(self):
     self.levels[0].UpdateSolution()
