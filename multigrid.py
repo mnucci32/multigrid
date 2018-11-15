@@ -3,6 +3,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import time
 
 mpl.rcParams["font.size"] = 20
 
@@ -57,6 +58,7 @@ class gridLevel:
     self.sweeps = 5
     self.solution = np.zeros((xNum + 1, yNum + 1))
     self.residual = np.zeros((xNum - 1, yNum - 1))
+    self.forcing = np.zeros((xNum - 1, yNum - 1))
 
   def Laplacian(self, xx, yy):
     return -4.0 * self.solution[xx,yy] + self.solution[xx-1,yy] + \
@@ -83,12 +85,13 @@ class gridLevel:
   def GaussSeidel(self):
     # assign boundary conditions
     self.AssignBCs()
-    for ss in range(0, self.sweeps):
+    for _ in range(0, self.sweeps):
       # loop over interior solution
       for xx in range(1, self.solution.shape[0] - 1):
         for yy in range(1, self.solution.shape[1] - 1):
-          self.solution[xx, yy] = 0.25 * \
-              (self.solution[xx - 1, yy] + self.solution[xx + 1, yy] + \
+          self.solution[xx, yy] = 0.25 * (self.area * \
+              self.forcing[xx - 1, yy - 1] + 
+              self.solution[xx - 1, yy] + self.solution[xx + 1, yy] + \
               self.solution[xx, yy - 1] + self.solution[xx, yy + 1])
 
 
@@ -172,8 +175,13 @@ class mgSolution:
   def Print(self):
     self.levels[0].Print()
 
-  def ResidNorm(self, nn):
+  def ResidNorm(self, nn, t0):
     r = self.levels[0].residual
     resid = np.sum(r * r) / (r.shape[0] * r.shape[1])
-    print(nn, resid)
+    dt = time.time() - t0
+    print("{0:5d} {1:22.4e} {2:15.4e}".format(nn, resid, dt))
+
+  def MultigridCycle(self):
+    self.levels[0].GaussSeidel()
+    self.levels[0].CalcResidual()
 
