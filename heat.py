@@ -6,13 +6,13 @@ import time
 
 def main():
   # set up inputs
-  xRange = [0.0, 10.0]
-  xNum = 21
-  yRange = [0.0, 10.0]
-  yNum = 21
-  gridLevels = 2
+  xRange = [0.0, 4.0]
+  xNum = 5
+  yRange = [0.0, 4.0]
+  yNum = 5
+  gridLevels = 1
   nu = 1
-  timeSteps = 100
+  timeSteps = 3
 
   t0 = time.time()
 

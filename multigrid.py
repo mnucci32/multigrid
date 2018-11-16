@@ -11,7 +11,7 @@ def LinearInterp(x0, x1, d0, d1, x):
   diff = x1 - x0
   dist = np.sqrt(np.dot(diff, diff))
   norm = diff / dist
-  coeff = np.dot(x - x0, norm)
+  coeff = np.dot(x - x0, norm) / dist
   di = d0 * (1.0 - coeff) + coeff * d1
   xi = x0 * (1.0 - coeff) + coeff * x1
   return xi, di
@@ -50,7 +50,6 @@ class gridLevel:
     self.xUpper = np.linspace(150.0, 200.0, yNum)
     self.yLower = np.linspace(100.0, 150.0, xNum)
     self.yUpper = np.linspace(150.0, 200.0, xNum)
-    self.sweeps = 5
     self.solution = np.zeros((xNum + 1, yNum + 1))
     self.residual = np.zeros((xNum - 1, yNum - 1))
     self.forcing = np.zeros((xNum - 1, yNum - 1))
@@ -83,15 +82,15 @@ class gridLevel:
     self.solution[1:-1, 0] = yl
     self.solution[1:-1, -1] = yu
 
-  def GaussSeidel(self):
+  def GaussSeidel(self, ss):
     # assign boundary conditions
     self.AssignBCs()
-    for _ in range(0, self.sweeps):
+    for _ in range(0, ss):
       # loop over interior solution
       for xx in range(1, self.solution.shape[0] - 1):
         for yy in range(1, self.solution.shape[1] - 1):
           self.solution[xx, yy] = 0.25 * (self.area * \
-              self.forcing[xx - 1, yy - 1] + 
+              self.forcing[xx - 1, yy - 1] + \
               self.solution[xx - 1, yy] + self.solution[xx + 1, yy] + \
               self.solution[xx, yy - 1] + self.solution[xx, yy + 1])
 
@@ -100,11 +99,10 @@ class gridLevel:
     # assign boundary conditions
     self.AssignBCs()
     # loop over cells and calculate residual
-    self.residual = np.zeros(self.residual.shape)
     for xx in range(0, self.residual.shape[0]):
       for yy in range(0, self.residual.shape[1]):
-        self.residual[xx, yy] = self.nu * self.Laplacian(xx + 1, yy + 1) \
-            / self.area
+        self.residual[xx, yy] = self.forcing[xx, yy] + \
+            self.nu * self.Laplacian(xx + 1, yy + 1) / self.area
 
   def ToNodes(self):
     # initialize nodal solution
@@ -144,9 +142,9 @@ class gridLevel:
     # loop over interior nodes
     for xx in range(1, self.numNodesX - 1):
       for yy in range(1, self.numNodesY - 1):
-        nodalResidual[xx, yy] = 0.25 * (self.residual[xx + 1, yy] + \
-            self.residual[xx, yy] + self.residual[xx + 1, yy + 1] + \
-            self.residual[xx, yy + 1])
+        nodalResidual[xx, yy] = 0.25 * (self.residual[xx - 1, yy] + \
+            self.residual[xx, yy] + self.residual[xx - 1, yy - 1] + \
+            self.residual[xx, yy - 1])
     return nodalResidual
 
   def PlotCenter(self):
@@ -168,7 +166,8 @@ class gridLevel:
     plt.ylabel("Y (m)")
     plt.title("Temperature Contour")
     nodalSolution = self.ToNodes()
-    cf = ax.contourf(self.coords[:,:, 0], self.coords[:,:, 1], nodalSolution)
+    cf = ax.contourf(self.coords[:,:, 0], self.coords[:,:, 1], nodalSolution, \
+        levels=np.linspace(np.min(nodalSolution), np.max(nodalSolution), 11))
     cbar = fig.colorbar(cf)
     cbar.ax.set_ylabel("Temperature (K)")
     ax.grid(True)
@@ -184,6 +183,9 @@ class gridLevel:
 class mgSolution:
   def __init__(self, xRange, xNum, yRange, yNum, nu, levels):
     self.numLevel = levels
+    self.sweeps = 5
+    self.preRelaxationSweeps = 2
+    self.postRelaxationSweeps = 1
     self.levels = []
     for ll in range(0, levels):
       xn = xNum
@@ -204,8 +206,8 @@ class mgSolution:
     self.levels[0].Print()
 
   def ResidNorm(self, nn, t0):
-    r = self.levels[0].residual
-    resid = np.sqrt(np.sum(r * r) / len(r[:]))
+    r = self.levels[0].residual[:]
+    resid = np.linalg.norm(r) / np.sqrt(len(r))
     dt = time.time() - t0
     print("{0:5d} {1:22.4e} {2:15.4e}".format(nn, resid, dt))
 
@@ -224,20 +226,45 @@ class mgSolution:
     # coarse to fine transfer
     # convert residual to node
     rc = self.levels[ll].ResidualToNodes()
-    # use bilinear interp
+    # use bilinear interpolation
     for xx in range(0, self.levels[ll - 1].forcing.shape[0]):
       for yy in range(0, self.levels[ll - 1].forcing.shape[1]):
         xc = xx // 2
         yc = yy // 2
-        self.levels[ll - 1].forcing = BilinearInterp(\
-            self.levels[ll].coords[xc, yc], self.levels[ll].coords[xc + 1, yc], \
+        self.levels[ll - 1].forcing[xx, yy] = BilinearInterp(\
+            self.levels[ll].coords[xc, yc], \
+            self.levels[ll].coords[xc + 1, yc], \
             self.levels[ll].coords[xc, yc + 1], \
-            self.levels[ll].coords[xc + 1, yc + 1],
+            self.levels[ll].coords[xc + 1, yc + 1], \
             rc[xc, yc], rc[xc + 1, yc], rc[xc, yc + 1], rc[xc + 1, yc + 1], \
             self.levels[ll - 1].centers[xx, yy])
+
     
+  def CycleAtLevel(self, fl):
+    if fl == self.numLevel - 1:
+      # at coarsest level - recursive base case
+      self.levels[fl].GaussSeidel(self.sweeps)
+      self.levels[fl].CalcResidual()
+    else:
+      # pre-relaxation at fine level
+      self.levels[fl].GaussSeidel(self.preRelaxationSweeps)
+
+      # coarse grid correction
+      self.levels[fl].CalcResidual()
+      self.Restriction(fl)
+
+      # recursive call to next coarse level
+      cl = fl + 1
+      self.CycleAtLevel(cl)
+
+      # interpolate coarse level correction
+      self.Prolongation(cl)
+
+      # post-relaxation at fine level
+      self.levels[fl].GaussSeidel(self.postRelaxationSweeps)
+
 
   def MultigridCycle(self):
-    self.levels[0].GaussSeidel()
-    self.levels[0].CalcResidual()
+    self.CycleAtLevel(0)
+
 
