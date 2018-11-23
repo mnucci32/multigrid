@@ -24,6 +24,52 @@ def BilinearInterp(x0, x1, x2, x3, d0, d1, d2, d3, x):
   _, df = LinearInterp(x4, x5, d4, d5, x)
   return df
 
+def GaussSeidel(matrix, rhs, sweeps):
+  # matrix BCs should already be set, so loop over interior only
+  for _ in range(0, sweeps):
+    # loop over interior solution
+    for xx in range(1, matrix.shape[0] - 1):
+      for yy in range(1, matrix.shape[1] - 1):
+        matrix[xx, yy] = 0.25 * (rhs[xx, yy] + \
+            matrix[xx - 1, yy] + matrix[xx + 1, yy] + \
+            matrix[xx, yy - 1] + matrix[xx, yy + 1])
+  return matrix
+
+def CellsToNodes(cells, haveGhosts):
+  # initialize nodal data
+  if haveGhosts:
+    nx = cells.shape[0] - 1
+    ny = cells.shape[1] - 1
+  else:
+    nx = cells.shape[0] + 1
+    ny = cells.shape[1] + 1
+  nodes = np.zeros((nx, ny))
+  if not haveGhosts:
+    # assign corners
+    nodes[0, 0] = cells[0, 0]
+    nodes[-1, 0] = cells[-1, 0]
+    nodes[0, -1] = cells[0, -1]
+    nodes[-1, -1] = cells[-1, -1]
+    # assign edges
+    for xx in range(1, nx - 1):
+      nodes[xx, 0] = 0.5 * (cells[xx, 0] + cells[xx - 1, 0])
+      nodes[xx, -1] = 0.5 * (cells[xx, -1] + cells[xx - 1, -1])
+    for yy in range(1, ny - 1):
+      nodes[0, yy] = 0.5 * (cells[0, yy] + cells[0, yy - 1])
+      nodes[-1, yy] = 0.5 * (cells[-1, yy] + cells[-1, yy - 1])
+    # loop over interior nodes
+    for xx in range(1, nx - 1):
+      for yy in range(1, ny - 1):
+        nodes[xx, yy] = 0.25 * (cells[xx - 1, yy] + cells[xx, yy] + \
+            cells[xx - 1, yy - 1] + cells[xx, yy - 1])
+  else:
+    # loop over all nodes
+    for xx in range(1, nx + 1):
+      for yy in range(1, ny + 1):
+        nodes[xx - 1, yy - 1] = 0.25 * (cells[xx - 1, yy] + cells[xx, yy] + \
+            cells[xx - 1, yy - 1] + cells[xx, yy - 1])
+  return nodes
+
 
 class gridLevel:
   def __init__(self, xRange, xNum, yRange, yNum, nu):
@@ -61,11 +107,11 @@ class gridLevel:
     return (self.numNodesX - 1) * (self.numNodesY - 1)
 
   def Laplacian(self, xx, yy):
-    return -4.0 * self.solution[xx,yy] + self.solution[xx-1,yy] + \
-        self.solution[xx + 1, yy] + self.solution[xx, yy - 1] + \
+    return 4.0 * self.solution[xx,yy] - self.solution[xx-1,yy] - \
+        self.solution[xx + 1, yy] - self.solution[xx, yy - 1] - \
         self.solution[xx, yy + 1]
             
-  def AssignBCs(self):
+  def AssignBCs(self, sol):
     xl = np.zeros((self.numNodesY - 1))
     xu = np.zeros((self.numNodesY - 1))
     for ii in range(0, len(xl)):
@@ -77,31 +123,35 @@ class gridLevel:
       yl[ii] = 0.5 * (self.yLower[ii] + self.yLower[ii + 1])
       yu[ii] = 0.5 * (self.yUpper[ii] + self.yUpper[ii + 1])
 
-    self.solution[0, 1:-1] = xl
-    self.solution[-1, 1:-1] = xu
-    self.solution[1:-1, 0] = yl
-    self.solution[1:-1, -1] = yu
+    sol[0, 1:-1] = xl
+    sol[-1, 1:-1] = xu
+    sol[1:-1, 0] = yl
+    sol[1:-1, -1] = yu
+    return sol
 
-  def GaussSeidel(self, ss):
-    # assign boundary conditions
-    self.AssignBCs()
-    for _ in range(0, ss):
-      # loop over interior solution
-      for xx in range(1, self.solution.shape[0] - 1):
-        for yy in range(1, self.solution.shape[1] - 1):
-          self.solution[xx, yy] = 0.25 * (self.area * \
-              self.forcing[xx - 1, yy - 1] + \
-              self.solution[xx - 1, yy] + self.solution[xx + 1, yy] + \
-              self.solution[xx, yy - 1] + self.solution[xx, yy + 1])
-
+  def Rhs(self):
+    rhs = np.zeros((self.forcing.shape[0] + 2, self.forcing.shape[1] + 2))
+    # DEBUG
+    rhs[1:-1, 1:-1] = self.area * self.forcing / self.area
+    # assign edges
+    rhs[0, 1:-1] = rhs[1, 1:-1]
+    rhs[-1, 1:-1] = rhs[-2, 1:-1]
+    rhs[1:-1, 0] = rhs[1:-1, 1]
+    rhs[1:-1, -1] = rhs[1:-1, -2]
+    # assign corners
+    rhs[0, 0] = 0.5 * (rhs[0, 1] + rhs[1, 0])
+    rhs[-1, -1] = 0.5 * (rhs[-1, -2] + rhs[-2, -1])
+    rhs[0, -1] = 0.5 * (rhs[0, -2] + rhs[1, -1])
+    rhs[-1, 0] = 0.5 * (rhs[-2, 0] + rhs[-1, 1])
+    return rhs
 
   def CalcResidual(self):
-    # assign boundary conditions
-    self.AssignBCs()
+    # assign BCs
+    self.solution = self.AssignBCs(self.solution)
     # loop over cells and calculate residual
     for xx in range(0, self.residual.shape[0]):
       for yy in range(0, self.residual.shape[1]):
-        self.residual[xx, yy] = self.forcing[xx, yy] + \
+        self.residual[xx, yy] = self.forcing[xx, yy] - \
             self.nu * self.Laplacian(xx + 1, yy + 1) / self.area
 
   def ToNodes(self):
@@ -120,32 +170,6 @@ class gridLevel:
             self.solution[xx, yy + 1])
     return nodalSolution
 
-  def ResidualToNodes(self):
-    # initialize nodal residual
-    nodalResidual = np.zeros((self.numNodesX, self.numNodesY))
-    # assign corners
-    nodalResidual[0, 0] = self.residual[0, 0]
-    nodalResidual[-1, 0] = self.residual[-1, 0]
-    nodalResidual[0, -1] = self.residual[0, -1]
-    nodalResidual[-1, -1] = self.residual[-1, -1]
-    # assign edges
-    for xx in range(1, self.numNodesX - 1):
-      nodalResidual[xx, 0] = 0.5 * (self.residual[xx, 0] + \
-          self.residual[xx - 1, 0])
-      nodalResidual[xx, -1] = 0.5 * (self.residual[xx, -1] + \
-          self.residual[xx - 1, -1])
-    for yy in range(1, self.numNodesY - 1):
-      nodalResidual[0, yy] = 0.5 * (self.residual[0, yy] + \
-          self.residual[0, yy - 1])
-      nodalResidual[-1, yy] = 0.5 * (self.residual[-1, yy] + \
-          self.residual[-1, yy - 1])
-    # loop over interior nodes
-    for xx in range(1, self.numNodesX - 1):
-      for yy in range(1, self.numNodesY - 1):
-        nodalResidual[xx, yy] = 0.25 * (self.residual[xx - 1, yy] + \
-            self.residual[xx, yy] + self.residual[xx - 1, yy - 1] + \
-            self.residual[xx, yy - 1])
-    return nodalResidual
 
   def PlotCenter(self):
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -206,6 +230,7 @@ class mgSolution:
     self.levels[0].Print()
 
   def ResidNorm(self, nn, t0):
+    self.levels[0].CalcResidual()
     r = self.levels[0].residual[:]
     resid = np.linalg.norm(r) / np.sqrt(len(r))
     dt = time.time() - t0
@@ -222,49 +247,86 @@ class mgSolution:
             self.levels[ll].residual[2 * xx, 2 * yy + 1] + \
             self.levels[ll].residual[2 * xx + 1, 2 * yy + 1])
 
-  def Prolongation(self, ll):
+  def Prolongation(self, ll, coarseCorrection):
     # coarse to fine transfer
-    # convert residual to node
-    rc = self.levels[ll].ResidualToNodes()
+    # convert solution to node
+    # DEBUG this should solve error equation - coarse grid error should be 
+    # "prolonged" to fine grid
+    cc = CellsToNodes(coarseCorrection, True)
+    print("NODAL COARSE CORR\n", cc)
+    correction = np.zeros(self.levels[ll - 1].solution.shape)
     # use bilinear interpolation
-    for xx in range(0, self.levels[ll - 1].forcing.shape[0]):
-      for yy in range(0, self.levels[ll - 1].forcing.shape[1]):
-        xc = xx // 2
-        yc = yy // 2
-        self.levels[ll - 1].forcing[xx, yy] = BilinearInterp(\
+    for xx in range(1, correction.shape[0] - 1):
+      for yy in range(1, correction.shape[1] - 1):
+        xc = (xx - 1) // 2
+        yc = (yy - 1) // 2
+        correction[xx, yy] = BilinearInterp(\
             self.levels[ll].coords[xc, yc], \
             self.levels[ll].coords[xc + 1, yc], \
             self.levels[ll].coords[xc, yc + 1], \
             self.levels[ll].coords[xc + 1, yc + 1], \
-            rc[xc, yc], rc[xc + 1, yc], rc[xc, yc + 1], rc[xc + 1, yc + 1], \
-            self.levels[ll - 1].centers[xx, yy])
+            cc[xc, yc], cc[xc + 1, yc], cc[xc, yc + 1], cc[xc + 1, yc + 1], \
+            self.levels[ll - 1].centers[xx - 1, yy - 1])
+    print("CORRECTION")
+    print(correction[1:-1,1:-1])
+    print("CURRENT")
+    print(self.levels[ll - 1].solution[1:-1,1:-1])
+    self.levels[ll - 1].solution += correction
+    print("UPDATED")
+    print(self.levels[ll - 1].solution[1:-1,1:-1])
 
     
-  def CycleAtLevel(self, fl):
+  def CycleAtLevel(self, fl, sol, bcs):
+    if bcs:
+      sol = self.levels[fl].AssignBCs(sol)
+
     if fl == self.numLevel - 1:
       # at coarsest level - recursive base case
-      self.levels[fl].GaussSeidel(self.sweeps)
+      print("coarsest", fl)
+      print("STARTING SOL\n", sol)
+      print("RHS\n", self.levels[fl].Rhs())
+      rhs = self.levels[fl].Rhs()
+      if not bcs:
+        sol[0,:] = rhs[0,:]
+        sol[-1,:] = rhs[-1,:]
+        sol[:, 0] = rhs[:, 0]
+        sol[:,-1] = rhs[:,-1]
+      sol = GaussSeidel(sol, rhs, self.sweeps)
+      self.levels[fl].solution = sol.copy()
       self.levels[fl].CalcResidual()
+      print("coarse correction\n", sol)
     else:
       # pre-relaxation at fine level
-      self.levels[fl].GaussSeidel(self.preRelaxationSweeps)
+      print("pre-relaxation", fl)
+      sol = GaussSeidel(sol, self.levels[fl].Rhs(), self.preRelaxationSweeps)
+      self.levels[fl].solution = sol.copy()
+      print(sol[1:-1,1:-1])
 
       # coarse grid correction
       self.levels[fl].CalcResidual()
+      print("FINE RESID", self.levels[fl].residual)
       self.Restriction(fl)
+      print("restriction\n", self.levels[fl+1].forcing)
 
       # recursive call to next coarse level
       cl = fl + 1
-      self.CycleAtLevel(cl)
+      coarseCorrection = np.zeros((self.levels[cl].solution.shape))
+      coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, False)
 
       # interpolate coarse level correction
-      self.Prolongation(cl)
+      self.Prolongation(cl, coarseCorrection)
+      sol = self.levels[fl].solution.copy()
 
       # post-relaxation at fine level
-      self.levels[fl].GaussSeidel(self.postRelaxationSweeps)
+      print("post-relaxation", fl)
+      sol = GaussSeidel(sol, self.levels[fl].Rhs(), self.postRelaxationSweeps)
+      self.levels[fl].solution = sol.copy()
+      print(sol[1:-1,1:-1])
+
+    return sol
 
 
   def MultigridCycle(self):
-    self.CycleAtLevel(0)
+    self.CycleAtLevel(0, self.levels[0].solution, True)
 
 

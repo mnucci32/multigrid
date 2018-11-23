@@ -10,7 +10,7 @@ def main():
   xNum = 5
   yRange = [0.0, 4.0]
   yNum = 5
-  gridLevels = 1
+  gridLevels = 2
   nu = 1
   timeSteps = 3
 
@@ -26,8 +26,8 @@ def main():
     solution.ResidNorm(nn, t0)
 
   # print and plot solution
-  #solution.Print()
   solution.PlotNode()
+  solution.Print()
 
 if __name__ == "__main__":
   main()
