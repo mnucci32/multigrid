@@ -131,8 +131,8 @@ class gridLevel:
 
   def Rhs(self):
     rhs = np.zeros((self.forcing.shape[0] + 2, self.forcing.shape[1] + 2))
-    # DEBUG
-    rhs[1:-1, 1:-1] = self.area * self.forcing / self.area
+    # DEBUG -- should be multiplying by area of grid that is doing relaxation
+    rhs[1:-1, 1:-1] = self.area * self.forcing
     # assign edges
     rhs[0, 1:-1] = rhs[1, 1:-1]
     rhs[-1, 1:-1] = rhs[-2, 1:-1]
@@ -239,9 +239,10 @@ class mgSolution:
   def Restriction(self, ll):
     # fine to coarse transfer
     # full weighting of cells
+    factor = self.levels[ll].area / self.levels[ll + 1].area
     for xx in range(0, self.levels[ll + 1].forcing.shape[0]):
       for yy in range(0, self.levels[ll + 1].forcing.shape[1]):
-        self.levels[ll + 1].forcing[xx, yy] = 0.25 * \
+        self.levels[ll + 1].forcing[xx, yy] = factor * 0.25 * \
             (self.levels[ll].residual[2 * xx, 2 * yy] + \
             self.levels[ll].residual[2 * xx + 1, 2 * yy] + \
             self.levels[ll].residual[2 * xx, 2 * yy + 1] + \
