@@ -111,7 +111,6 @@ class gridLevel:
     self.yLower = np.linspace(100.0, 150.0, xNum)
     self.yUpper = np.linspace(150.0, 200.0, xNum)
     self.solution = np.zeros((xNum + 1, yNum + 1))
-    self.residual = np.zeros((xNum - 1, yNum - 1))
     self.forcing = np.zeros((xNum - 1, yNum - 1))
 
   def NumNodes(self):
@@ -120,10 +119,21 @@ class gridLevel:
   def NumCells(self):
     return (self.numNodesX - 1) * (self.numNodesY - 1)
 
-  def LaplacianOfSolution(self, xx, yy):
-    return Laplacian(self.solution, xx, yy)
-            
-  def AssignBCs(self, sol):
+  def AssignBCs(self, data, isSolution):
+    if isSolution:
+      return self.AssignSolutionBCs(data)
+    else:
+      return self.AssignCorrectionBCs(data)
+
+  def AssignCorrectionBCs(self, corr):
+    rhs = self.Rhs()
+    corr[0,:] = rhs[0,:]
+    corr[-1,:] = rhs[-1,:]
+    corr[:, 0] = rhs[:, 0]
+    corr[:,-1] = rhs[:,-1]
+    return corr
+
+  def AssignSolutionBCs(self, sol):
     xl = np.zeros((self.numNodesY - 1))
     xu = np.zeros((self.numNodesY - 1))
     for ii in range(0, len(xl)):
@@ -158,8 +168,8 @@ class gridLevel:
 
   def CalcResidual(self):
     # assign BCs
-    self.solution = self.AssignBCs(self.solution)
-    self.residual = Residual(self.solution, self.forcing, self.nu, self.area)
+    self.solution = self.AssignBCs(self.solution, True)
+    return Residual(self.solution, self.forcing, self.nu, self.area)
 
   def ToNodes(self):
     # initialize nodal solution
@@ -237,8 +247,7 @@ class mgSolution:
     self.levels[0].Print()
 
   def ResidNorm(self, nn, t0):
-    self.levels[0].CalcResidual()
-    r = self.levels[0].residual[:]
+    r = self.levels[0].CalcResidual()[:]
     resid = np.linalg.norm(r) / np.sqrt(len(r))
     dt = time.time() - t0
     print("{0:5d} {1:22.4e} {2:15.4e}".format(nn, resid, dt))
@@ -246,6 +255,7 @@ class mgSolution:
   def Restriction(self, ll, residual):
     # fine to coarse transfer
     # full weighting of cells
+    # integral preserving so area factor is needed
     factor = self.levels[ll].area / self.levels[ll + 1].area
     for xx in range(0, self.levels[ll + 1].forcing.shape[0]):
       for yy in range(0, self.levels[ll + 1].forcing.shape[1]):
@@ -257,9 +267,8 @@ class mgSolution:
 
   def Prolongation(self, ll, coarseCorrection, fine):
     # coarse to fine transfer
+    # solves the error equation - coarse grid error "prolonged" to fine grid
     # convert solution to node
-    # DEBUG this should solve error equation - coarse grid error should be 
-    # "prolonged" to fine grid
     cc = CellsToNodes(coarseCorrection, True)
     correction = np.zeros(self.levels[ll - 1].solution.shape)
     # use bilinear interpolation
@@ -277,62 +286,38 @@ class mgSolution:
     fine += correction
     return fine
     
-  def CycleAtLevel(self, fl, sol, bcs):
+  def CycleAtLevel(self, fl, sol, isSolution):
+    self.levels[fl].AssignBCs(sol, isSolution)
     rhs = self.levels[fl].Rhs()
-    if bcs:
-      sol = self.levels[fl].AssignBCs(sol)
-    else:
-      sol[0,:] = rhs[0,:]
-      sol[-1,:] = rhs[-1,:]
-      sol[:, 0] = rhs[:, 0]
-      sol[:,-1] = rhs[:,-1]
 
     if fl == self.numLevel - 1:
       # at coarsest level - recursive base case
-      #print("coarsest", fl)
       sol = GaussSeidel(sol, rhs, self.sweeps)
-      if bcs:
-        self.levels[fl].solution = sol.copy()
-      #self.levels[fl].CalcResidual()
-      #print("coarse correction\n", sol)
+      #if isSolution:
+      #  self.levels[fl].solution = sol.copy()
     else:
       # pre-relaxation at fine level
-      #print("pre-relaxation", fl)
-      #print("pre-relaxation RHS\n", rhs)
-      #rhs = self.levels[fl].Rhs()
       sol = GaussSeidel(sol, rhs, self.preRelaxationSweeps)
-      if bcs:
-        self.levels[fl].solution = sol.copy()
-      #print("after pre-relaxation\n",sol[1:-1,1:-1])
+      #if isSolution:
+      #  self.levels[fl].solution = sol.copy()
 
       # coarse grid correction
       r = Residual(sol, self.levels[fl].forcing, \
           self.levels[fl].nu, self.levels[fl].area)
       self.Restriction(fl, r)
-      #print("restriction\n", self.levels[fl+1].forcing)
 
       # recursive call to next coarse level
       cl = fl + 1
       coarseCorrection = np.zeros((self.levels[cl].solution.shape))
-      #print("recursive call to level...", cl)
-      #print("AT GRID LEVEL", fl, "NEED CORRECTION FROM", cl)
       coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, False)
-      #print("...RETURNED from recursive call to level", cl)
-      #print("CORRECTION FROM", cl, "\n", coarseCorrection)
-      #print("CURRENT SOL AT", fl, "\n", sol[1:-1,1:-1])
-      #print("STORED SOL AT", fl, "\n", self.levels[fl].solution[1:-1,1:-1])
 
       # interpolate coarse level correction
       sol = self.Prolongation(cl, coarseCorrection, sol)
-      #print("AFTER CORRECTION SOL AT", fl, "\n", sol[1:-1,1:-1])
       
       # post-relaxation at fine level
-      #print("post-relaxation", fl)
-      #rhs = self.levels[fl].Rhs()
       sol = GaussSeidel(sol, rhs, self.postRelaxationSweeps)
-      if bcs:
-        self.levels[fl].solution = sol.copy()
-      #print(sol[1:-1,1:-1])
+      #if isSolution:
+      #  self.levels[fl].solution = sol.copy()
 
     return sol
 

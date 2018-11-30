@@ -10,7 +10,7 @@ def main():
   xNum = 9
   yRange = [0.0, 40.0]
   yNum = 9
-  gridLevels = 2
+  gridLevels = 3
   nu = 1
   timeSteps = 10
 
