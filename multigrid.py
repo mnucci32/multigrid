@@ -86,9 +86,9 @@ def CellsToNodes(cells, haveGhosts):
 
 
 class gridLevel:
-  def __init__(self, xRange, xNum, yRange, yNum, nu):
-    xc = np.linspace(xRange[0], xRange[1], xNum)
-    yc = np.linspace(yRange[0], yRange[1], yNum)
+  def __init__(self, xc, yc, nu, cornerTemps):
+    xNum = len(xc)
+    yNum = len(yc)
     self.numNodesX = xNum
     self.numNodesY = yNum
     self.coords = np.zeros((xNum, yNum, 2))
@@ -105,11 +105,10 @@ class gridLevel:
         self.centers[xx, yy, 0] = xc[xx] + self.dx / 2.0
         self.centers[xx, yy, 1] = yc[yy] + self.dy / 2.0
     self.nu = nu
-    self.dt = self.area / (4.0 * self.nu)
-    self.xLower = np.linspace(100.0, 150.0, yNum)
-    self.xUpper = np.linspace(150.0, 200.0, yNum)
-    self.yLower = np.linspace(100.0, 150.0, xNum)
-    self.yUpper = np.linspace(150.0, 200.0, xNum)
+    self.xLower = np.linspace(cornerTemps[0], cornerTemps[2], yNum)
+    self.xUpper = np.linspace(cornerTemps[1], cornerTemps[3], yNum)
+    self.yLower = np.linspace(cornerTemps[0], cornerTemps[1], xNum)
+    self.yUpper = np.linspace(cornerTemps[2], cornerTemps[3], xNum)
     self.solution = np.zeros((xNum + 1, yNum + 1))
     self.forcing = np.zeros((xNum - 1, yNum - 1))
 
@@ -222,19 +221,24 @@ class gridLevel:
     print(self.ToNodes())
 
 class mgSolution:
-  def __init__(self, xRange, xNum, yRange, yNum, nu, levels):
-    self.numLevel = levels
+  def __init__(self, simData):
+    self.numLevel = simData.gridLevels
+    self.cycleType = simData.cycleType
     self.sweeps = 5
     self.preRelaxationSweeps = 2
     self.postRelaxationSweeps = 1
+    xNum = len(simData.xc)
+    yNum = len(simData.yc)
     self.levels = []
-    for ll in range(0, levels):
+    for ll in range(0, simData.gridLevels):
       xn = xNum
       yn = yNum
       if ll > 0:
         xn = xNum // 2 ** ll + 1
         yn = yNum // 2 ** ll + 1
-      grid = gridLevel(xRange, xn, yRange, yn, nu)
+      xc = np.linspace(simData.xc[0], simData.xc[-1], xn)
+      yc = np.linspace(simData.yc[0], simData.yc[-1], yn)
+      grid = gridLevel(xc, yc, simData.nu, simData.cornerTemps)
       self.levels.append(grid)
 
   def PlotCenter(self):
