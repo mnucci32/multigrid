@@ -5,7 +5,7 @@ import time
 
 class simulationData:
 
-  def __init__(self, options, gridLevels, cycle):
+  def __init__(self, options, gridLevels, cycle, name):
     # data common to all simulations
     self.nu = float(options.nu)
     tokens = options.xSpan.split()
@@ -25,10 +25,19 @@ class simulationData:
     self.gridLevels = gridLevels
     self.cycleType = cycle
     self.residuals = np.zeros((self.timeSteps))
+    self.name = name
 
   def LogResidual(self, nn, resid):
     self.residuals[nn] = resid
     if resid <= self.residualThreshold and self.timeToThreshold < 0.0:
       self.timeToThreshold = time.time() - self.startingTime
+
+  def PrintTimeToThreshold(self):
+    if self.timeToThreshold > 0:
+      print(self.name, "reached threshold in", \
+          "{0:6.4e} s; final residual of {1:6.4e}".format(\
+              self.timeToThreshold, self.residuals[-1]))
+    else:
+      print(self.name, "did not reach threshold")
 
 

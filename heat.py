@@ -5,6 +5,11 @@ import simulationData as sd
 import numpy as np
 import time
 import optparse
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
+mpl.rcParams["font.size"] = 20
+
 
 def main():
   # Set up options
@@ -33,22 +38,96 @@ def main():
                     + "Default = 100 150 150 200")
 
   options, remainder = parser.parse_args()
-  simData = sd.simulationData(options, 3, "V")
 
-  t0 = time.time()
-
+  # ------------------------------------------------------------------
+  # baseline simulation - no multigrid
+  print("-----------------------------------------")
+  print("Baseline Simulation")
+  print("-----------------------------------------")
+  baselineData = sd.simulationData(options, 1, "V", "Baseline")
   # construct grids
-  solution = mg.mgSolution(simData)
-
+  baseline = mg.mgSolution(baselineData)
   # march solution in time
   print("Iteration          Residual          Time")
-  for nn in simData.iteration:
-    solution.MultigridCycle()
-    solution.ResidNorm(nn, t0)
+  for nn in baselineData.iteration:
+    baseline.MultigridCycle()
+    resid = baseline.ResidNorm(nn, baselineData.startingTime)
+    baselineData.LogResidual(nn, resid)
+  print("\n\n")
 
-  # print and plot solution
-  solution.PlotNode()
-  solution.Print()
+  # ------------------------------------------------------------------
+  # 2 level multigrid, V cycle
+  print("-----------------------------------------")
+  print("2 Level Multigrid V Cycle")
+  print("-----------------------------------------")
+  mg2vData = sd.simulationData(options, 2, "V", "2 Level V")
+  # construct grids
+  mg2v = mg.mgSolution(mg2vData)
+  # march solution in time
+  print("Iteration          Residual          Time")
+  for nn in mg2vData.iteration:
+    mg2v.MultigridCycle()
+    resid = mg2v.ResidNorm(nn, mg2vData.startingTime)
+    mg2vData.LogResidual(nn, resid)
+  print("\n\n")
+
+  # ------------------------------------------------------------------
+  # 4 level multigrid, V cycle
+  print("-----------------------------------------")
+  print("4 Level Multigrid V Cycle")
+  print("-----------------------------------------")
+  mg4vData = sd.simulationData(options, 4, "V", "4 Level V")
+  # construct grids
+  mg4v = mg.mgSolution(mg4vData)
+  # march solution in time
+  print("Iteration          Residual          Time")
+  for nn in mg4vData.iteration:
+    mg4v.MultigridCycle()
+    resid = mg4v.ResidNorm(nn, mg4vData.startingTime)
+    mg4vData.LogResidual(nn, resid)
+  print("\n\n")
+
+  # ------------------------------------------------------------------
+  # 4 level multigrid, W cycle
+  print("-----------------------------------------")
+  print("4 Level Multigrid W Cycle")
+  print("-----------------------------------------")
+  mg4wData = sd.simulationData(options, 4, "W", "4 Level W")
+  # construct grids
+  mg4w = mg.mgSolution(mg4wData)
+  # march solution in time
+  print("Iteration          Residual          Time")
+  #for nn in mg4wData.iteration:
+  #  mg4w.MultigridCycle()
+  #  resid = mg4w.ResidNorm(nn, mg4wData.startingTime)
+  #  mg4wData.LogResidual(nn, resid)
+  print("\n\n")
+
+  # ------------------------------------------------------------------
+  # plot solutions
+  _, ax = plt.subplots(2, 3, figsize=(24, 12))
+  baseline.PlotNode(ax[0, 0], baselineData.name)
+  mg2v.PlotNode(ax[0, 1], mg2vData.name)
+  mg4v.PlotNode(ax[0, 2], mg4vData.name)
+  # plot residuals
+  ax[1,2].set_xlabel("Iteration")
+  ax[1,2].set_ylabel("Residual")
+  ax[1,2].set_title("Residuals")
+  ax[1,2].semilogy(baselineData.iteration, baselineData.residuals, "k", lw=3)
+  ax[1,2].semilogy(mg2vData.iteration, mg2vData.residuals, "b", lw=3)
+  ax[1,2].semilogy(mg4vData.iteration, mg4vData.residuals, "r", lw=3)
+  ax[1,2].legend([baselineData.name, mg2vData.name, mg4vData.name])
+  ax[1,2].grid(True)
+  plt.tight_layout()
+  plt.show()
+
+  print("-----------------------------------------")
+  print("Summary")
+  print("-----------------------------------------")
+  baselineData.PrintTimeToThreshold()
+  mg2vData.PrintTimeToThreshold()
+  mg4vData.PrintTimeToThreshold()
+
 
 if __name__ == "__main__":
   main()

@@ -200,19 +200,16 @@ class gridLevel:
     plt.tight_layout()
     plt.show()
 
-  def PlotNode(self):
-    fig, ax = plt.subplots(figsize=(12, 8))
-    plt.xlabel("X (m)")
-    plt.ylabel("Y (m)")
-    plt.title("Temperature Contour")
+  def PlotNode(self, ax, title):
+    ax.set_xlabel("X (m)")
+    ax.set_ylabel("Y (m)")
+    ax.set_title(title)
     nodalSolution = self.ToNodes()
     cf = ax.contourf(self.coords[:,:, 0], self.coords[:,:, 1], nodalSolution, \
         levels=np.linspace(np.min(nodalSolution), np.max(nodalSolution), 11))
-    cbar = fig.colorbar(cf)
+    cbar = plt.colorbar(cf, ax=ax)
     cbar.ax.set_ylabel("Temperature (K)")
     ax.grid(True)
-    plt.tight_layout()
-    plt.show()
 
   def Print(self):
     print("CELL CENTER SOLUTION")
@@ -244,8 +241,8 @@ class mgSolution:
   def PlotCenter(self):
     self.levels[0].PlotCenter()
 
-  def PlotNode(self):
-    self.levels[0].PlotNode()
+  def PlotNode(self, ax, title):
+    self.levels[0].PlotNode(ax, title)
 
   def Print(self):
     self.levels[0].Print()
@@ -255,6 +252,7 @@ class mgSolution:
     resid = np.linalg.norm(r) / np.sqrt(len(r))
     dt = time.time() - t0
     print("{0:5d} {1:22.4e} {2:15.4e}".format(nn, resid, dt))
+    return resid
 
   def Restriction(self, ll, residual):
     # fine to coarse transfer
