@@ -238,6 +238,12 @@ class mgSolution:
       grid = gridLevel(xc, yc, simData.nu, simData.cornerTemps)
       self.levels.append(grid)
 
+  def CycleIndex(self):
+    ind = 1
+    if self.cycleType == "W":
+      ind = 2
+    return ind
+
   def PlotCenter(self):
     self.levels[0].PlotCenter()
 
@@ -295,13 +301,9 @@ class mgSolution:
     if fl == self.numLevel - 1:
       # at coarsest level - recursive base case
       sol = GaussSeidel(sol, rhs, self.sweeps)
-      #if isSolution:
-      #  self.levels[fl].solution = sol.copy()
     else:
       # pre-relaxation at fine level
       sol = GaussSeidel(sol, rhs, self.preRelaxationSweeps)
-      #if isSolution:
-      #  self.levels[fl].solution = sol.copy()
 
       # coarse grid correction
       r = Residual(sol, self.levels[fl].forcing, \
@@ -311,15 +313,14 @@ class mgSolution:
       # recursive call to next coarse level
       cl = fl + 1
       coarseCorrection = np.zeros((self.levels[cl].solution.shape))
-      coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, False)
+      for _ in range(0, self.CycleIndex()):
+        coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, False)
 
       # interpolate coarse level correction
       sol = self.Prolongation(cl, coarseCorrection, sol)
       
       # post-relaxation at fine level
       sol = GaussSeidel(sol, rhs, self.postRelaxationSweeps)
-      #if isSolution:
-      #  self.levels[fl].solution = sol.copy()
 
     return sol
 

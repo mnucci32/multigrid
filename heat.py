@@ -97,10 +97,10 @@ def main():
   mg4w = mg.mgSolution(mg4wData)
   # march solution in time
   print("Iteration          Residual          Time")
-  #for nn in mg4wData.iteration:
-  #  mg4w.MultigridCycle()
-  #  resid = mg4w.ResidNorm(nn, mg4wData.startingTime)
-  #  mg4wData.LogResidual(nn, resid)
+  for nn in mg4wData.iteration:
+    mg4w.MultigridCycle()
+    resid = mg4w.ResidNorm(nn, mg4wData.startingTime)
+    mg4wData.LogResidual(nn, resid)
   print("\n\n")
 
   # ------------------------------------------------------------------
@@ -109,15 +109,18 @@ def main():
   baseline.PlotNode(ax[0, 0], baselineData.name)
   mg2v.PlotNode(ax[0, 1], mg2vData.name)
   mg4v.PlotNode(ax[0, 2], mg4vData.name)
+  mg4w.PlotNode(ax[1, 0], mg4wData.name)
   # plot residuals
-  ax[1,2].set_xlabel("Iteration")
-  ax[1,2].set_ylabel("Residual")
-  ax[1,2].set_title("Residuals")
-  ax[1,2].semilogy(baselineData.iteration, baselineData.residuals, "k", lw=3)
-  ax[1,2].semilogy(mg2vData.iteration, mg2vData.residuals, "b", lw=3)
-  ax[1,2].semilogy(mg4vData.iteration, mg4vData.residuals, "r", lw=3)
-  ax[1,2].legend([baselineData.name, mg2vData.name, mg4vData.name])
-  ax[1,2].grid(True)
+  ax[1, 2].set_xlabel("Iteration")
+  ax[1, 2].set_ylabel("Residual")
+  ax[1, 2].set_title("Residuals")
+  ax[1, 2].semilogy(baselineData.iteration, baselineData.residuals, "k", lw=3)
+  ax[1, 2].semilogy(mg2vData.iteration, mg2vData.residuals, "b", lw=3)
+  ax[1, 2].semilogy(mg4vData.iteration, mg4vData.residuals, "r", lw=3)
+  ax[1, 2].semilogy(mg4wData.iteration, mg4wData.residuals, "g", lw=3)
+  ax[1, 2].legend([baselineData.name, mg2vData.name, mg4vData.name,
+                   mg4wData.name])
+  ax[1, 2].grid(True)
   plt.tight_layout()
   plt.show()
 
@@ -127,6 +130,7 @@ def main():
   baselineData.PrintTimeToThreshold()
   mg2vData.PrintTimeToThreshold()
   mg4vData.PrintTimeToThreshold()
+  mg4wData.PrintTimeToThreshold()
 
 
 if __name__ == "__main__":
