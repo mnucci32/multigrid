@@ -16,27 +16,33 @@ class simulationData:
     tokens = options.cornerTemps.split()
     self.cornerTemps = np.array([float(tokens[0]), float(tokens[1]), \
                                  float(tokens[2]), float(tokens[3])])
-    self.iteration = np.zeros((self.timeSteps))
-    self.iteration = range(0, self.timeSteps)
+    self.iteration = np.zeros((self.timeSteps + 1))
+    self.iteration = range(0, self.timeSteps + 1)
     self.residualThreshold = float(options.threshold)
     # data different for each simulation
     self.startingTime = time.time()
     self.timeToThreshold = -1.0
     self.gridLevels = gridLevels
     self.cycleType = cycle
-    self.residuals = np.zeros((self.timeSteps))
+    self.residuals = np.zeros((self.timeSteps + 1))
     self.name = name
 
-  def LogResidual(self, nn, resid):
-    self.residuals[nn] = resid
-    if resid <= self.residualThreshold and self.timeToThreshold < 0.0:
+  def LogResidual(self, nn, l2, linf):
+    self.residuals[nn] = l2
+    nresid = l2 / self.residuals[0]
+    dt = time.time() - self.startingTime
+    print("{0:5d} {1:21.4e} {2:16.4e} {3:15.4e}".format(nn, nresid, linf, dt))
+    if nresid <= self.residualThreshold and self.timeToThreshold < 0.0:
       self.timeToThreshold = time.time() - self.startingTime
+
+  def NormResids(self):
+    return self.residuals / self.residuals[0]
 
   def PrintTimeToThreshold(self):
     if self.timeToThreshold > 0:
-      print(self.name, "reached threshold in", \
-          "{0:6.4e} s; final residual of {1:6.4e}".format(\
-              self.timeToThreshold, self.residuals[-1]))
+      print(self.name, "reached threshold in",
+            "{0:6.4e} s; final residual of {1:6.4e}".format(
+                self.timeToThreshold, self.residuals[-1] / self.residuals[0]))
     else:
       print(self.name, "did not reach threshold")
 

@@ -253,31 +253,32 @@ class mgSolution:
   def Print(self):
     self.levels[0].Print()
 
-  def ResidNorm(self, nn, t0):
+  def ResidNorm(self):
     r = self.levels[0].CalcResidual()[:]
     resid = np.linalg.norm(r) / np.sqrt(len(r))
-    dt = time.time() - t0
-    print("{0:5d} {1:22.4e} {2:15.4e}".format(nn, resid, dt))
-    return resid
+    return resid, np.max(r)
 
   def Restriction(self, ll, residual):
     # fine to coarse transfer
     # full weighting of cells
     # integral preserving so area factor is needed
     factor = self.levels[ll].area / self.levels[ll + 1].area
-    for xx in range(0, self.levels[ll + 1].forcing.shape[0]):
-      for yy in range(0, self.levels[ll + 1].forcing.shape[1]):
-        self.levels[ll + 1].forcing[xx, yy] = factor * 0.25 * \
-            (residual[2 * xx, 2 * yy] + \
-            residual[2 * xx + 1, 2 * yy] + \
-            residual[2 * xx, 2 * yy + 1] + \
-            residual[2 * xx + 1, 2 * yy + 1])
+    coarse = np.zeros(self.levels[ll + 1].forcing.shape)
+    for xx in range(0, coarse.shape[0]):
+      for yy in range(0, coarse.shape[1]):
+        coarse[xx, yy] = factor * 0.25 * \
+            (residual[2 * xx, 2 * yy] + residual[2 * xx + 1, 2 * yy] +
+             residual[2 * xx, 2 * yy + 1] + residual[2 * xx + 1, 2 * yy + 1])
+    return coarse
 
-  def Prolongation(self, ll, coarseCorrection, fine):
+  def Prolongation(self, ll, coarseCorrection, fine, cummulative):
     # coarse to fine transfer
     # solves the error equation - coarse grid error "prolonged" to fine grid
     # convert solution to node
-    cc = CellsToNodes(coarseCorrection, True)
+    if cummulative:
+      cc = CellsToNodes(coarseCorrection, True)
+    else:
+      cc = coarseCorrection
     correction = np.zeros(self.levels[ll - 1].solution.shape)
     # use bilinear interpolation
     for xx in range(1, correction.shape[0] - 1):
@@ -291,7 +292,11 @@ class mgSolution:
             self.levels[ll].coords[xc + 1, yc + 1], \
             cc[xc, yc], cc[xc + 1, yc], cc[xc, yc + 1], cc[xc + 1, yc + 1], \
             self.levels[ll - 1].centers[xx - 1, yy - 1])
-    fine += correction
+    if cummulative:
+      fine += correction
+    else:
+      fine = correction.copy()
+      self.levels[ll-1].AssignBCs(fine, True)
     return fine
     
   def CycleAtLevel(self, fl, sol, isSolution):
@@ -308,16 +313,17 @@ class mgSolution:
       # coarse grid correction
       r = Residual(sol, self.levels[fl].forcing, \
           self.levels[fl].nu, self.levels[fl].area)
-      self.Restriction(fl, r)
+      cl = fl + 1
+      self.levels[cl].forcing = self.Restriction(fl, r)
 
       # recursive call to next coarse level
-      cl = fl + 1
+      
       coarseCorrection = np.zeros((self.levels[cl].solution.shape))
       for _ in range(0, self.CycleIndex()):
         coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, False)
 
       # interpolate coarse level correction
-      sol = self.Prolongation(cl, coarseCorrection, sol)
+      sol = self.Prolongation(cl, coarseCorrection, sol, True)
       
       # post-relaxation at fine level
       sol = GaussSeidel(sol, rhs, self.postRelaxationSweeps)
@@ -327,5 +333,15 @@ class mgSolution:
 
   def MultigridCycle(self):
     self.CycleAtLevel(0, self.levels[0].solution, True)
+
+  def FullMultigridCycle(self):
+    # restrict solution down from finest grid to coarsest grid
+    for level in range(self.numLevel - 1, -1, -1):
+      self.CycleAtLevel(level, self.levels[level].solution, True)
+      # interpolate solution at level to next finest grid
+      if level > 0:
+        nodalSolution = self.levels[level].ToNodes()
+        self.levels[level - 1].solution = self.Prolongation(
+            level, nodalSolution, self.levels[level - 1].solution, False)
 
 
