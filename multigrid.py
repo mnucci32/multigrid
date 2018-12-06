@@ -7,21 +7,33 @@ import time
 
 mpl.rcParams["font.size"] = 20
 
-def LinearInterp(x0, x1, d0, d1, x):
-  diff = x1 - x0
-  dist = np.sqrt(np.dot(diff, diff))
-  norm = diff / dist
-  coeff = np.dot(x - x0, norm) / dist
-  di = d0 * (1.0 - coeff) + coeff * d1
-  xi = x0 * (1.0 - coeff) + coeff * x1
-  return xi, di
+def Distance(a, b):
+  return np.linalg.norm(a - b)
 
-def BilinearInterp(x0, x1, x2, x3, d0, d1, d2, d3, x):
+def LinearInterpCoeff(x0, x1, x):
+  diff = x1 - x0
+  rdist = 1.0 / np.sqrt(np.dot(diff, diff))
+  norm = diff * rdist
+  return np.dot(x - x0, norm) * rdist
+
+def BilinearInterpCoeffs(x0, x1, x2, x3, x):
+  coeffs = np.zeros((3))
+  coeffs[0] = LinearInterpCoeff(x0, x1, x)
+  x4 = LinearInterp(x0, x1, coeffs[0])
+  coeffs[1] = LinearInterpCoeff(x2, x3, x)
+  x5 = LinearInterp(x2, x3, coeffs[1])
+  coeffs[2] = LinearInterpCoeff(x4, x5, x)
+  return coeffs
+
+def LinearInterp(x0, x1, coeff):
+  return x0 * (1.0 - coeff) + coeff * x1
+
+def BilinearInterp(d0, d1, d2, d3, coeffs):
   # 2 linear interpolations to convert to 1D
-  x4, d4 = LinearInterp(x0, x1, d0, d1, x)
-  x5, d5 = LinearInterp(x2, x3, d2, d3, x)
+  d4 = LinearInterp(d0, d1, coeffs[0])
+  d5 = LinearInterp(d2, d3, coeffs[1])
   # 1 linear interpolation to complete trilinear interpolation
-  _, df = LinearInterp(x4, x5, d4, d5, x)
+  df = LinearInterp(d4, d5, coeffs[2])
   return df
 
 def GaussSeidel(matrix, rhs, sweeps):
@@ -84,31 +96,42 @@ def CellsToNodes(cells, haveGhosts):
             cells[xx - 1, yy - 1] + cells[xx, yy - 1])
   return nodes
 
+def HeatFunction(dist, maxDist, temp):
+  return temp * np.power(dist / maxDist, 2)
+
 
 class gridLevel:
-  def __init__(self, xc, yc, nu, cornerTemps):
+  def __init__(self, xc, yc, nu, cornerTemp):
     xNum = len(xc)
     yNum = len(yc)
     self.numNodesX = xNum
     self.numNodesY = yNum
+    self.center = np.zeros((2))
+    self.center[0] = 0.5 * (xc[0] + xc[-1])
+    self.center[1] = 0.5 * (yc[0] + yc[-1])
+    self.nodeDistFromCenter = np.zeros((xNum, yNum))
     self.coords = np.zeros((xNum, yNum, 2))
     for xx in range(0, xNum):
       for yy in range(0, yNum):
         self.coords[xx, yy, 0] = xc[xx]
         self.coords[xx, yy, 1] = yc[yy]
+        self.nodeDistFromCenter[xx, yy] = Distance(self.coords[xx, yy,:], \
+            self.center)
     self.dx = xc[1] - xc[0]
     self.dy = yc[1] - yc[0]
     self.area = self.dx * self.dy
-    self.centers = np.zeros((xNum - 1, yNum - 1, 2))
-    for xx in range(0, xNum - 1):
-      for yy in range(0, yNum - 1):
-        self.centers[xx, yy, 0] = xc[xx] + self.dx / 2.0
-        self.centers[xx, yy, 1] = yc[yy] + self.dy / 2.0
+    self.centers = np.zeros((xNum + 1, yNum + 1, 2))
+    self.distanceFromCenter = np.zeros((xNum + 1, yNum + 1))
+    xcc = np.linspace(xc[0] - self.dx / 2.0, xc[-1] + self.dx / 2.0, xNum + 1)
+    ycc = np.linspace(yc[0] - self.dy / 2.0, yc[-1] + self.dy / 2.0, yNum + 1)
+    for xx in range(0, xNum + 1):
+      for yy in range(0, yNum + 1):
+        self.centers[xx, yy, 0] = xcc[xx]
+        self.centers[xx, yy, 1] = ycc[yy]
+        self.distanceFromCenter[xx, yy] = Distance(\
+            self.centers[xx, yy,:], self.center)
     self.nu = nu
-    self.xLower = np.linspace(cornerTemps[0], cornerTemps[2], yNum)
-    self.xUpper = np.linspace(cornerTemps[1], cornerTemps[3], yNum)
-    self.yLower = np.linspace(cornerTemps[0], cornerTemps[1], xNum)
-    self.yUpper = np.linspace(cornerTemps[2], cornerTemps[3], xNum)
+    self.cornerTemp = cornerTemp
     self.solution = np.zeros((xNum + 1, yNum + 1))
     self.forcing = np.zeros((xNum - 1, yNum - 1))
 
@@ -133,21 +156,11 @@ class gridLevel:
     return corr
 
   def AssignSolutionBCs(self, sol):
-    xl = np.zeros((self.numNodesY - 1))
-    xu = np.zeros((self.numNodesY - 1))
-    for ii in range(0, len(xl)):
-      xl[ii] = 0.5 * (self.xLower[ii] + self.xLower[ii + 1])
-      xu[ii] = 0.5 * (self.xUpper[ii] + self.xUpper[ii + 1])
-    yl = np.zeros((self.numNodesX - 1))
-    yu = np.zeros((self.numNodesX - 1))
-    for ii in range(0, len(yl)):
-      yl[ii] = 0.5 * (self.yLower[ii] + self.yLower[ii + 1])
-      yu[ii] = 0.5 * (self.yUpper[ii] + self.yUpper[ii + 1])
-
-    sol[0, 1:-1] = xl
-    sol[-1, 1:-1] = xu
-    sol[1:-1, 0] = yl
-    sol[1:-1, -1] = yu
+    maxDist = np.max(self.nodeDistFromCenter)
+    sol[0, :] = HeatFunction(self.distanceFromCenter[0, :], maxDist, self.cornerTemp)
+    sol[-1, :] = HeatFunction(self.distanceFromCenter[-1, :], maxDist, self.cornerTemp)
+    sol[:, 0] = HeatFunction(self.distanceFromCenter[:, 0], maxDist, self.cornerTemp)
+    sol[:, -1] = HeatFunction(self.distanceFromCenter[:, -1], maxDist, self.cornerTemp)
     return sol
 
   def Rhs(self):
@@ -174,10 +187,11 @@ class gridLevel:
     # initialize nodal solution
     nodalSolution = np.zeros((self.numNodesX, self.numNodesY))
     # assign boundary conditions
-    nodalSolution[0,:] = self.xLower
-    nodalSolution[-1,:] = self.xUpper
-    nodalSolution[:, 0] = self.yLower
-    nodalSolution[:, -1] = self.yUpper
+    maxDist = np.max(self.nodeDistFromCenter)
+    nodalSolution[0,:] = HeatFunction(self.nodeDistFromCenter[0,:], maxDist, self.cornerTemp)
+    nodalSolution[-1,:] = HeatFunction(self.nodeDistFromCenter[-1,:], maxDist, self.cornerTemp)
+    nodalSolution[:, 0] = HeatFunction(self.nodeDistFromCenter[:,0], maxDist, self.cornerTemp)
+    nodalSolution[:, -1] = HeatFunction(self.nodeDistFromCenter[:,-1], maxDist, self.cornerTemp)
     # loop over interior nodes
     for xx in range(1, self.numNodesX - 1):
       for yy in range(1, self.numNodesY - 1):
@@ -192,7 +206,7 @@ class gridLevel:
     plt.xlabel("X (m)")
     plt.ylabel("Y (m)")
     plt.title("Temperature Contour")
-    cf = ax.contourf(self.centers[:,:, 0], self.centers[:,:, 1], \
+    cf = ax.contourf(self.centers[1:-1,1:-1, 0], self.centers[1:-1,1:-1, 1], \
         self.solution[1:-1,1:-1])
     cbar = fig.colorbar(cf)
     cbar.ax.set_ylabel("Temperature (K)")
@@ -235,8 +249,24 @@ class mgSolution:
         yn = yNum // 2 ** ll + 1
       xc = np.linspace(simData.xc[0], simData.xc[-1], xn)
       yc = np.linspace(simData.yc[0], simData.yc[-1], yn)
-      grid = gridLevel(xc, yc, simData.nu, simData.cornerTemps)
+      grid = gridLevel(xc, yc, simData.nu, simData.cornerTemp)
       self.levels.append(grid)
+    self.prolongationCoeffs = []
+    for ll in range(0, simData.gridLevels - 1):
+      coeffs = np.zeros((self.levels[ll].centers.shape[0],
+                         self.levels[ll].centers.shape[0], 3))
+      # use bilinear interpolation coeffs
+      for xx in range(1, coeffs.shape[0] - 1):
+        for yy in range(1, coeffs.shape[1] - 1):
+          xc = (xx - 1) // 2
+          yc = (yy - 1) // 2
+          coeffs[xx, yy] = BilinearInterpCoeffs(\
+              self.levels[ll + 1].coords[xc, yc], \
+              self.levels[ll + 1].coords[xc + 1, yc], \
+              self.levels[ll + 1].coords[xc, yc + 1], \
+              self.levels[ll + 1].coords[xc + 1, yc + 1], \
+              self.levels[ll].centers[xx, yy])
+      self.prolongationCoeffs.append(coeffs)
 
   def CycleIndex(self):
     ind = 1
@@ -256,19 +286,21 @@ class mgSolution:
   def ResidNorm(self):
     r = self.levels[0].CalcResidual()[:]
     resid = np.linalg.norm(r) / np.sqrt(len(r))
-    return resid, np.max(r)
+    return resid, np.max(np.abs(r))
 
-  def Restriction(self, ll, residual):
+  def Restriction(self, ll, fine, useAreaFactor):
     # fine to coarse transfer
     # full weighting of cells
     # integral preserving so area factor is needed
-    factor = self.levels[ll].area / self.levels[ll + 1].area
+    factor = 1.0
+    if useAreaFactor:
+      factor = self.levels[ll].area / self.levels[ll + 1].area
     coarse = np.zeros(self.levels[ll + 1].forcing.shape)
     for xx in range(0, coarse.shape[0]):
       for yy in range(0, coarse.shape[1]):
         coarse[xx, yy] = factor * 0.25 * \
-            (residual[2 * xx, 2 * yy] + residual[2 * xx + 1, 2 * yy] +
-             residual[2 * xx, 2 * yy + 1] + residual[2 * xx + 1, 2 * yy + 1])
+            (fine[2 * xx, 2 * yy] + fine[2 * xx + 1, 2 * yy] +
+             fine[2 * xx, 2 * yy + 1] + fine[2 * xx + 1, 2 * yy + 1])
     return coarse
 
   def Prolongation(self, ll, coarseCorrection, fine, cummulative):
@@ -286,12 +318,8 @@ class mgSolution:
         xc = (xx - 1) // 2
         yc = (yy - 1) // 2
         correction[xx, yy] = BilinearInterp(\
-            self.levels[ll].coords[xc, yc], \
-            self.levels[ll].coords[xc + 1, yc], \
-            self.levels[ll].coords[xc, yc + 1], \
-            self.levels[ll].coords[xc + 1, yc + 1], \
             cc[xc, yc], cc[xc + 1, yc], cc[xc, yc + 1], cc[xc + 1, yc + 1], \
-            self.levels[ll - 1].centers[xx - 1, yy - 1])
+            self.prolongationCoeffs[ll - 1][xx, yy, :])
     if cummulative:
       fine += correction
     else:
@@ -314,7 +342,7 @@ class mgSolution:
       r = Residual(sol, self.levels[fl].forcing, \
           self.levels[fl].nu, self.levels[fl].area)
       cl = fl + 1
-      self.levels[cl].forcing = self.Restriction(fl, r)
+      self.levels[cl].forcing = self.Restriction(fl, r, True)
 
       # recursive call to next coarse level
       
@@ -335,6 +363,14 @@ class mgSolution:
     self.CycleAtLevel(0, self.levels[0].solution, True)
 
   def FullMultigridCycle(self):
+    # DEBUG
+    #for level in range(0, self.numLevel):
+    #  self.levels[level].forcing *= 1.0
+    #for level in range(0, self.numLevel - 1):
+    #  interp = self.Restriction(level, self.levels[level].solution, False)
+    #  self.levels[level + 1].solution[1:-1, 1:-1] = interp
+
+
     # restrict solution down from finest grid to coarsest grid
     for level in range(self.numLevel - 1, -1, -1):
       self.CycleAtLevel(level, self.levels[level].solution, True)

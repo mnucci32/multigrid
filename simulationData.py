@@ -13,9 +13,7 @@ class simulationData:
     tokens = options.ySpan.split()
     self.yc = np.linspace(float(tokens[0]), float(tokens[1]), int(tokens[2]))
     self.timeSteps = int(options.timeSteps)
-    tokens = options.cornerTemps.split()
-    self.cornerTemps = np.array([float(tokens[0]), float(tokens[1]), \
-                                 float(tokens[2]), float(tokens[3])])
+    self.cornerTemp = float(options.cornerTemp)
     self.iteration = np.zeros((self.timeSteps + 1))
     self.iteration = range(0, self.timeSteps + 1)
     self.residualThreshold = float(options.threshold)

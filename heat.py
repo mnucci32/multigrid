@@ -30,12 +30,11 @@ def main():
                     default="1.0e-10",
                     help="residual threshold to use for timing. " \
                     + "Default = 1e-10")
-  parser.add_option("-c", "--cornerTemperatures", action="store",
-                    dest="cornerTemps",
-                    default="100 150 150 200",
-                    help="corner temperatures to use as BCs. " \
-                    + "Format is (xl,yl xu,yl yu,xl, xu,yu). " \
-                    + "Default = 100 150 150 200")
+  parser.add_option("-c", "--cornerTemperature", action="store",
+                    dest="cornerTemp",
+                    default="500",
+                    help="corner temperature to use as BC. " \
+                    + "Default = 500")
 
   options, remainder = parser.parse_args()
 
@@ -128,6 +127,21 @@ def main():
     l2, linf = fmg4v.ResidNorm()
     fmg4vData.LogResidual(nn, l2, linf)
   print("\n\n")
+
+  # DEBUG
+  #fig1, ax1 = plt.subplots(figsize=(12, 8))
+  #plt.xlabel("X (m)")
+  #plt.ylabel("Y (m)")
+  #plt.title("Residual Contour")
+  #cf = ax1.contourf(fmg4v.levels[0].centers[1:-1, 1:-1, 0], \
+  #    fmg4v.levels[0].centers[1:-1,1:-1, 1], \
+  #    fmg4v.levels[0].CalcResidual())
+  #cbar = fig1.colorbar(cf)
+  #cbar.ax.set_ylabel("Residual")
+  #ax1.grid(True)
+  #plt.tight_layout()
+  #plt.show()
+
 
   # ------------------------------------------------------------------
   # plot solutions
