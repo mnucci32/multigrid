@@ -323,7 +323,7 @@ class mgSolution:
     if cummulative:
       fine += correction
     else:
-      fine = correction.copy()
+      fine = correction
       self.levels[ll-1].AssignBCs(fine, True)
     return fine
     

@@ -151,20 +151,35 @@ def main():
   mg4v.PlotNode(ax[0, 2], mg4vData.name)
   mg4w.PlotNode(ax[1, 0], mg4wData.name)
   fmg4v.PlotNode(ax[1, 1], fmg4vData.name)
-  # plot residuals
-  ax[1, 2].set_xlabel("Iteration")
-  ax[1, 2].set_ylabel("Residual")
-  ax[1, 2].set_title("Residuals")
-  ax[1, 2].semilogy(baselineData.iteration, baselineData.NormResids(), "k", lw=3)
-  ax[1, 2].semilogy(mg2vData.iteration, mg2vData.NormResids(), "b", lw=3)
-  ax[1, 2].semilogy(mg4vData.iteration, mg4vData.NormResids(), "r", lw=3)
-  ax[1, 2].semilogy(mg4wData.iteration, mg4wData.NormResids(), "g", lw=3)
-  ax[1, 2].semilogy(fmg4vData.iteration, fmg4vData.NormResids(), "c", lw=3)
-  ax[1, 2].legend([baselineData.name, mg2vData.name, mg4vData.name,
-                   mg4wData.name, fmg4vData.name])
-  ax[1, 2].grid(True)
   plt.tight_layout()
   plt.show()
+
+  _, ax = plt.subplots(1, 2, figsize=(24, 12))
+  # plot residual vs iteration
+  ax[0].set_xlabel("Iteration")
+  ax[0].set_ylabel("Normalized Residual")
+  ax[0].semilogy(baselineData.iteration, baselineData.NormResids(), "k", lw=3)
+  ax[0].semilogy(mg2vData.iteration, mg2vData.NormResids(), "b", lw=3)
+  ax[0].semilogy(mg4vData.iteration, mg4vData.NormResids(), "r", lw=3)
+  ax[0].semilogy(mg4wData.iteration, mg4wData.NormResids(), "g", lw=3)
+  ax[0].semilogy(fmg4vData.iteration, fmg4vData.NormResids(), "c", lw=3)
+  ax[0].legend([baselineData.name, mg2vData.name, mg4vData.name,
+                   mg4wData.name, fmg4vData.name])
+  ax[0].grid(True)
+  # plot residual vs wall clock time
+  ax[1].set_xlabel("Wall Clock Time (s)")
+  ax[1].set_ylabel("Normalized Residual")
+  ax[1].semilogy(baselineData.times, baselineData.NormResids(), "k", lw=3)
+  ax[1].semilogy(mg2vData.times, mg2vData.NormResids(), "b", lw=3)
+  ax[1].semilogy(mg4vData.times, mg4vData.NormResids(), "r", lw=3)
+  ax[1].semilogy(mg4wData.times, mg4wData.NormResids(), "g", lw=3)
+  ax[1].semilogy(fmg4vData.times, fmg4vData.NormResids(), "c", lw=3)
+  ax[1].legend([baselineData.name, mg2vData.name, mg4vData.name,
+                   mg4wData.name, fmg4vData.name])
+  ax[1].grid(True)
+  plt.tight_layout()
+  plt.show()
+
 
   print("-----------------------------------------")
   print("Summary")

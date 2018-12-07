@@ -23,12 +23,14 @@ class simulationData:
     self.gridLevels = gridLevels
     self.cycleType = cycle
     self.residuals = np.zeros((self.timeSteps + 1))
+    self.times = np.zeros((self.timeSteps + 1))
     self.name = name
 
   def LogResidual(self, nn, l2, linf):
     self.residuals[nn] = l2
     nresid = l2 / self.residuals[0]
     dt = time.time() - self.startingTime
+    self.times[nn] = dt
     print("{0:5d} {1:21.4e} {2:16.4e} {3:15.4e}".format(nn, nresid, linf, dt))
     if nresid <= self.residualThreshold and self.timeToThreshold < 0.0:
       self.timeToThreshold = time.time() - self.startingTime
