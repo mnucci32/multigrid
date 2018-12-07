@@ -97,7 +97,8 @@ def CellsToNodes(cells, haveGhosts):
   return nodes
 
 def HeatFunction(relCoords, temp):
-  return temp * relCoords[:,0]
+  return 0.5 * temp * (np.sin(np.pi * relCoords[:,0]) + 1.0)
+  #return temp * relCoords[:,0]
 
 
 class gridLevel:
