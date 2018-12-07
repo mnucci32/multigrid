@@ -96,8 +96,8 @@ def CellsToNodes(cells, haveGhosts):
             cells[xx - 1, yy - 1] + cells[xx, yy - 1])
   return nodes
 
-def HeatFunction(dist, maxDist, temp):
-  return temp * np.power(dist / maxDist, 2)
+def HeatFunction(relCoords, temp):
+  return temp * relCoords[:,0]
 
 
 class gridLevel:
@@ -106,30 +106,30 @@ class gridLevel:
     yNum = len(yc)
     self.numNodesX = xNum
     self.numNodesY = yNum
-    self.center = np.zeros((2))
-    self.center[0] = 0.5 * (xc[0] + xc[-1])
-    self.center[1] = 0.5 * (yc[0] + yc[-1])
-    self.nodeDistFromCenter = np.zeros((xNum, yNum))
+    self.anchor = np.array([xc[0], yc[0]])
+    self.relCoords = np.zeros((xNum, yNum, 2))
     self.coords = np.zeros((xNum, yNum, 2))
     for xx in range(0, xNum):
       for yy in range(0, yNum):
-        self.coords[xx, yy, 0] = xc[xx]
-        self.coords[xx, yy, 1] = yc[yy]
-        self.nodeDistFromCenter[xx, yy] = Distance(self.coords[xx, yy,:], \
-            self.center)
+        self.coords[xx, yy, :] = [xc[xx], yc[yy]]
+        self.relCoords[xx, yy,:] = self.coords[xx, yy,:] - self.anchor
+    xlen = xc[-1] - xc[0]
+    ylen = yc[-1] - yc[0]
+    self.relCoords[:, :, 0] /= xlen
+    self.relCoords[:, :, 1] /= ylen
     self.dx = xc[1] - xc[0]
     self.dy = yc[1] - yc[0]
     self.area = self.dx * self.dy
     self.centers = np.zeros((xNum + 1, yNum + 1, 2))
-    self.distanceFromCenter = np.zeros((xNum + 1, yNum + 1))
+    self.relCenters = np.zeros((xNum + 1, yNum + 1, 2))
     xcc = np.linspace(xc[0] - self.dx / 2.0, xc[-1] + self.dx / 2.0, xNum + 1)
     ycc = np.linspace(yc[0] - self.dy / 2.0, yc[-1] + self.dy / 2.0, yNum + 1)
     for xx in range(0, xNum + 1):
       for yy in range(0, yNum + 1):
-        self.centers[xx, yy, 0] = xcc[xx]
-        self.centers[xx, yy, 1] = ycc[yy]
-        self.distanceFromCenter[xx, yy] = Distance(\
-            self.centers[xx, yy,:], self.center)
+        self.centers[xx, yy, :] = [xcc[xx], ycc[yy]]
+        self.relCenters[xx, yy,:] = self.centers[xx, yy,:] - self.anchor
+    self.relCenters[:,:, 0] /= xlen
+    self.relCenters[:,:, 1] /= ylen
     self.nu = nu
     self.cornerTemp = cornerTemp
     self.solution = np.zeros((xNum + 1, yNum + 1))
@@ -156,11 +156,10 @@ class gridLevel:
     return corr
 
   def AssignSolutionBCs(self, sol):
-    maxDist = np.max(self.nodeDistFromCenter)
-    sol[0, :] = HeatFunction(self.distanceFromCenter[0, :], maxDist, self.cornerTemp)
-    sol[-1, :] = HeatFunction(self.distanceFromCenter[-1, :], maxDist, self.cornerTemp)
-    sol[:, 0] = HeatFunction(self.distanceFromCenter[:, 0], maxDist, self.cornerTemp)
-    sol[:, -1] = HeatFunction(self.distanceFromCenter[:, -1], maxDist, self.cornerTemp)
+    sol[0, :] = HeatFunction(self.relCenters[0, :], self.cornerTemp)
+    sol[-1, :] = HeatFunction(self.relCenters[-1, :], self.cornerTemp)
+    sol[:, 0] = HeatFunction(self.relCenters[:, 0], self.cornerTemp)
+    sol[:, -1] = HeatFunction(self.relCenters[:, -1], self.cornerTemp)
     return sol
 
   def Rhs(self):
@@ -187,11 +186,10 @@ class gridLevel:
     # initialize nodal solution
     nodalSolution = np.zeros((self.numNodesX, self.numNodesY))
     # assign boundary conditions
-    maxDist = np.max(self.nodeDistFromCenter)
-    nodalSolution[0,:] = HeatFunction(self.nodeDistFromCenter[0,:], maxDist, self.cornerTemp)
-    nodalSolution[-1,:] = HeatFunction(self.nodeDistFromCenter[-1,:], maxDist, self.cornerTemp)
-    nodalSolution[:, 0] = HeatFunction(self.nodeDistFromCenter[:,0], maxDist, self.cornerTemp)
-    nodalSolution[:, -1] = HeatFunction(self.nodeDistFromCenter[:,-1], maxDist, self.cornerTemp)
+    nodalSolution[0,:] = HeatFunction(self.relCoords[0,:], self.cornerTemp)
+    nodalSolution[-1,:] = HeatFunction(self.relCoords[-1,:], self.cornerTemp)
+    nodalSolution[:, 0] = HeatFunction(self.relCoords[:,0], self.cornerTemp)
+    nodalSolution[:, -1] = HeatFunction(self.relCoords[:,-1], self.cornerTemp)
     # loop over interior nodes
     for xx in range(1, self.numNodesX - 1):
       for yy in range(1, self.numNodesY - 1):
