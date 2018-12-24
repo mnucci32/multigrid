@@ -36,6 +36,24 @@ def BilinearInterp(d0, d1, d2, d3, coeffs):
   df = LinearInterp(d4, d5, coeffs[2])
   return df
 
+def QuadraticInterp(x0, x1, x2, d0, d1, d2, x, i):
+  c0 = ((x[i] - x1[i]) * (x[i] - x2[i])) / ((x0[i] - x1[i]) * (x0[i] - x2[i]))
+  c1 = ((x[i] - x0[i]) * (x[i] - x2[i])) / ((x1[i] - x0[i]) * (x1[i] - x2[i]))
+  c2 = ((x[i] - x0[i]) * (x[i] - x1[i])) / ((x2[i] - x0[i]) * (x2[i] - x1[i]))
+  if i == 0:
+    loc = np.array([x[i], x0[1]])
+  else:
+    loc = np.array([x0[0], x[i]])
+  return c0 * d0 + c1 * d1 + c2 * d2, loc
+
+def BiquadraticInterp(xsw, xs, xse, xw, xc, xe, xnw, xn, xne, sw, s, se, w, c, \
+    e, nw, n, ne, x):
+  lower, xl = QuadraticInterp(xsw, xs, xse, sw, s, se, x, 0)
+  middle, xm = QuadraticInterp(xw, xc, xe, w, c, e, x, 0)
+  upper, xu = QuadraticInterp(xnw, xn, xne, nw, n, ne, x, 0)
+  interp, _ = QuadraticInterp(xl, xm, xu, lower, middle, upper, x, 1)
+  return interp
+
 def GaussSeidel(matrix, rhs, sweeps):
   # matrix BCs should already be set, so loop over interior only
   for _ in range(0, sweeps):
@@ -97,8 +115,9 @@ def CellsToNodes(cells, haveGhosts):
   return nodes
 
 def HeatFunction(relCoords, temp):
-  return 0.5 * temp * (np.sin(np.pi * relCoords[:,0]) + 1.0)
-  #return temp * relCoords[:,0]
+  #return 0.5 * temp * (np.sin(np.pi * relCoords[:,0]) + 1.0)
+  return 0.5 * temp * relCoords[:,0] + 0.5 * temp
+  #return np.exp(relCoords[:,0]) * np.exp(-2.0 * relCoords[:,1])
 
 
 class gridLevel:
@@ -199,6 +218,21 @@ class gridLevel:
             self.solution[xx, yy + 1])
     return nodalSolution
 
+  def EdgeSolution(self, xx, yy):
+    # assign boundary conditions
+    north = 0.5 * (self.solution[xx, yy] + self.solution[xx, yy + 1])
+    south = 0.5 * (self.solution[xx, yy] + self.solution[xx, yy - 1])
+    east = 0.5 * (self.solution[xx, yy] + self.solution[xx + 1, yy])
+    west = 0.5 * (self.solution[xx, yy] + self.solution[xx - 1, yy])
+    return north, south, east, west
+
+  def EdgeCoords(self, xx, yy):
+    # assign boundary conditions
+    north = 0.5 * (self.centers[xx, yy, :] + self.centers[xx, yy + 1, :])
+    south = 0.5 * (self.centers[xx, yy, :] + self.centers[xx, yy - 1, :])
+    east = 0.5 * (self.centers[xx, yy, :] + self.centers[xx + 1, yy, :])
+    west = 0.5 * (self.centers[xx, yy, :] + self.centers[xx - 1, yy, :])
+    return north, south, east, west
 
   def PlotCenter(self):
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -229,6 +263,7 @@ class gridLevel:
     print(self.solution)
     print("NODAL SOLUTION")
     print(self.ToNodes())
+
 
 class mgSolution:
   def __init__(self, simData):
@@ -325,7 +360,32 @@ class mgSolution:
       fine = correction
       self.levels[ll-1].AssignBCs(fine, True)
     return fine
-    
+
+  def HighOrderInterp(self, cl):
+    fl = cl - 1
+    cNodes = self.levels[cl].ToNodes()
+    for xx in range(1, self.levels[fl].solution.shape[0] - 1):
+      for yy in range(1, self.levels[fl].solution.shape[1] - 1):
+        xc = (xx - 1) // 2
+        yc = (yy - 1) // 2
+        north, south, east, west = self.levels[cl].EdgeSolution(xc, yc)
+        pNorth, pSouth, pEast, pWest = self.levels[cl].EdgeCoords(xc, yc)
+        center = self.levels[cl].solution[xc, yc]
+        pCenter = self.levels[cl].centers[xc, yc, :]
+        sw = cNodes[xc, yc]
+        se = cNodes[xc + 1, yc]
+        nw = cNodes[xc, yc + 1]
+        ne = cNodes[xc + 1, yc + 1]
+        pSw = self.levels[cl].coords[xc, yc, :]
+        pSe = self.levels[cl].coords[xc + 1, yc, :]
+        pNw = self.levels[cl].coords[xc, yc + 1, :]
+        pNe = self.levels[cl].coords[xc + 1, yc + 1, :]
+        quad = BiquadraticInterp(pSw, pSouth, pSe, \
+            pWest, pCenter, pEast, pNw, pNorth, pNe, sw, south, se, west, \
+            center, east, nw, north, ne, self.levels[fl].centers[xx, yy,:])
+        self.levels[fl].solution[xx, yy] = quad
+
+
   def CycleAtLevel(self, fl, sol, isSolution):
     self.levels[fl].AssignBCs(sol, isSolution)
     rhs = self.levels[fl].Rhs()
@@ -344,7 +404,6 @@ class mgSolution:
       self.levels[cl].forcing = self.Restriction(fl, r, True)
 
       # recursive call to next coarse level
-      
       coarseCorrection = np.zeros((self.levels[cl].solution.shape))
       for _ in range(0, self.CycleIndex()):
         coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, False)
@@ -361,22 +420,40 @@ class mgSolution:
   def MultigridCycle(self):
     self.CycleAtLevel(0, self.levels[0].solution, True)
 
+  def MultigridFCycle(self):
+    # smooth and restrict down to coarsest grid
+    for level in range(0, self.numLevel - 1):
+      #sol = self.levels[level].solution
+
+      # pre-relaxation at fine level
+      self.levels[level].solution = GaussSeidel(self.levels[level].solution, self.levels[level].Rhs(), self.preRelaxationSweeps)
+
+      # coarse grid correction
+      r = Residual(self.levels[level].solution, self.levels[level].forcing, \
+          self.levels[level].nu, self.levels[level].area)
+      cl = level + 1
+      self.levels[cl].forcing = self.Restriction(level, r, True)
+    self.FullMultigridCycle()
+
+
+
   def FullMultigridCycle(self):
     # DEBUG
     #for level in range(0, self.numLevel):
     #  self.levels[level].forcing *= 1.0
     #for level in range(0, self.numLevel - 1):
-    #  interp = self.Restriction(level, self.levels[level].solution, False)
-    #  self.levels[level + 1].solution[1:-1, 1:-1] = interp
+    #  interp = self.Restriction(level, self.levels[level].forcing, False)
+    #  self.levels[level + 1].forcing = interp
 
-
-    # restrict solution down from finest grid to coarsest grid
+    # start at coarest grid and obtain solution
+    # DEBUG - should do V cycle at finest grid?
     for level in range(self.numLevel - 1, -1, -1):
       self.CycleAtLevel(level, self.levels[level].solution, True)
       # interpolate solution at level to next finest grid
       if level > 0:
-        nodalSolution = self.levels[level].ToNodes()
-        self.levels[level - 1].solution = self.Prolongation(
-            level, nodalSolution, self.levels[level - 1].solution, False)
+        self.HighOrderInterp(level)
+        #nodalSolution = self.levels[level].ToNodes()
+        #self.levels[level - 1].solution = self.Prolongation(
+        #    level, nodalSolution, self.levels[level - 1].solution, False)
 
 

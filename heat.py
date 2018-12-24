@@ -111,6 +111,24 @@ def main():
   print("\n\n")
 
   # ------------------------------------------------------------------
+  # 4 level multigrid, W cycle
+  print("-----------------------------------------")
+  print("4 Level Multigrid F Cycle")
+  print("-----------------------------------------")
+  mg4fData = sd.simulationData(options, 4, "V", "4 Level F")
+  # construct grids
+  mg4f = mg.mgSolution(mg4fData)
+  # march solution in time
+  print("Iteration        L2 Residual     Linf Residual       Time")
+  l2, linf = mg4f.ResidNorm()
+  mg4fData.LogResidual(0, l2, linf)
+  for nn in range(1, mg4fData.timeSteps + 1):
+    mg4f.MultigridFCycle()
+    l2, linf = mg4f.ResidNorm()
+    mg4fData.LogResidual(nn, l2, linf)
+  print("\n\n")
+
+  # ------------------------------------------------------------------
   # 4 level full multigrid, V cycle
   print("-----------------------------------------")
   print("4 Level Full Multigrid V Cycle")
@@ -150,7 +168,8 @@ def main():
   mg2v.PlotNode(ax[0, 1], mg2vData.name)
   mg4v.PlotNode(ax[0, 2], mg4vData.name)
   mg4w.PlotNode(ax[1, 0], mg4wData.name)
-  fmg4v.PlotNode(ax[1, 1], fmg4vData.name)
+  mg4f.PlotNode(ax[1, 1], mg4fData.name)
+  fmg4v.PlotNode(ax[1, 2], fmg4vData.name)
   plt.tight_layout()
   plt.show()
 
@@ -162,9 +181,10 @@ def main():
   ax[0].semilogy(mg2vData.iteration, mg2vData.NormResids(), "b", lw=3)
   ax[0].semilogy(mg4vData.iteration, mg4vData.NormResids(), "r", lw=3)
   ax[0].semilogy(mg4wData.iteration, mg4wData.NormResids(), "g", lw=3)
+  ax[0].semilogy(mg4fData.iteration, mg4fData.NormResids(), "m", lw=3)
   ax[0].semilogy(fmg4vData.iteration, fmg4vData.NormResids(), "c", lw=3)
   ax[0].legend([baselineData.name, mg2vData.name, mg4vData.name,
-                   mg4wData.name, fmg4vData.name])
+                   mg4wData.name, mg4fData.name, fmg4vData.name])
   ax[0].grid(True)
   # plot residual vs wall clock time
   ax[1].set_xlabel("Wall Clock Time (s)")
@@ -173,9 +193,10 @@ def main():
   ax[1].semilogy(mg2vData.times, mg2vData.NormResids(), "b", lw=3)
   ax[1].semilogy(mg4vData.times, mg4vData.NormResids(), "r", lw=3)
   ax[1].semilogy(mg4wData.times, mg4wData.NormResids(), "g", lw=3)
+  ax[1].semilogy(mg4fData.times, mg4fData.NormResids(), "m", lw=3)
   ax[1].semilogy(fmg4vData.times, fmg4vData.NormResids(), "c", lw=3)
   ax[1].legend([baselineData.name, mg2vData.name, mg4vData.name,
-                   mg4wData.name, fmg4vData.name])
+                   mg4wData.name, mg4fData.name, fmg4vData.name])
   ax[1].grid(True)
   plt.tight_layout()
   plt.show()
@@ -188,6 +209,7 @@ def main():
   mg2vData.PrintTimeToThreshold()
   mg4vData.PrintTimeToThreshold()
   mg4wData.PrintTimeToThreshold()
+  mg4fData.PrintTimeToThreshold()
   fmg4vData.PrintTimeToThreshold()
 
 
