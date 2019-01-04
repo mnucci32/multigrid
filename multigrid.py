@@ -115,8 +115,8 @@ def CellsToNodes(cells, haveGhosts):
   return nodes
 
 def HeatFunction(relCoords, temp):
-  #return 0.5 * temp * (np.sin(np.pi * relCoords[:,0]) + 1.0)
-  return 0.5 * temp * relCoords[:,0] + 0.5 * temp
+  return 0.5 * temp * (np.sin(np.pi * relCoords[:,0]) + 1.0)
+  #return 0.5 * temp * relCoords[:,0] + 0.5 * temp
   #return np.exp(relCoords[:,0]) * np.exp(-2.0 * relCoords[:,1])
 
 
@@ -264,6 +264,12 @@ class gridLevel:
     print("NODAL SOLUTION")
     print(self.ToNodes())
 
+  def Ax(self, sol):
+    prod = np.zeros(self.forcing.shape)
+    for xx in range(0, prod.shape[0]):
+      for yy in range(0, prod.shape[1]):
+        prod[xx,yy] = self.nu * Laplacian(sol, xx + 1, yy + 1) / self.area
+    return prod
 
 class mgSolution:
   def __init__(self, simData):
@@ -337,6 +343,18 @@ class mgSolution:
              fine[2 * xx, 2 * yy + 1] + fine[2 * xx + 1, 2 * yy + 1])
     return coarse
 
+  def RestrictionSol(self, ll, fine):
+    # fine to coarse transfer
+    # full weighting of cells
+    # integral preserving so area factor is needed
+    coarse = np.zeros(self.levels[ll + 1].solution.shape)
+    for xx in range(1, coarse.shape[0] - 1):
+      for yy in range(1, coarse.shape[1] - 1):
+        coarse[xx, yy] = 0.25 * \
+            (fine[2 * xx, 2 * yy] + fine[2 * xx - 1, 2 * yy] +
+             fine[2 * xx, 2 * yy - 1] + fine[2 * xx - 1, 2 * yy - 1])
+    return coarse
+
   def Prolongation(self, ll, coarseCorrection, fine, cummulative):
     # coarse to fine transfer
     # solves the error equation - coarse grid error "prolonged" to fine grid
@@ -358,7 +376,7 @@ class mgSolution:
       fine += correction
     else:
       fine = correction
-      self.levels[ll-1].AssignBCs(fine, True)
+      fine = self.levels[ll-1].AssignBCs(fine, True)
     return fine
 
   def HighOrderInterp(self, cl):
@@ -387,7 +405,7 @@ class mgSolution:
 
 
   def CycleAtLevel(self, fl, sol, isSolution):
-    self.levels[fl].AssignBCs(sol, isSolution)
+    sol = self.levels[fl].AssignBCs(sol, isSolution)
     rhs = self.levels[fl].Rhs()
 
     if fl == self.numLevel - 1:
@@ -401,12 +419,18 @@ class mgSolution:
       r = Residual(sol, self.levels[fl].forcing, \
           self.levels[fl].nu, self.levels[fl].area)
       cl = fl + 1
-      self.levels[cl].forcing = self.Restriction(fl, r, True)
+      solCoarse = self.RestrictionSol(fl, self.levels[fl].solution)
+      solCoarse = self.levels[cl].AssignBCs(solCoarse, True)
+      axCoarse = self.levels[cl].Ax(solCoarse)
+      resCoarse = self.Restriction(fl, r, True)
+      self.levels[cl].forcing = axCoarse + resCoarse
 
       # recursive call to next coarse level
-      coarseCorrection = np.zeros((self.levels[cl].solution.shape))
+      coarseCorrection = solCoarse.copy()
       for _ in range(0, self.CycleIndex()):
-        coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, False)
+        #coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, False)
+        coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, True)
+      coarseCorrection = coarseCorrection - solCoarse
 
       # interpolate coarse level correction
       sol = self.Prolongation(cl, coarseCorrection, sol, True)
@@ -432,7 +456,11 @@ class mgSolution:
       r = Residual(self.levels[level].solution, self.levels[level].forcing, \
           self.levels[level].nu, self.levels[level].area)
       cl = level + 1
-      self.levels[cl].forcing = self.Restriction(level, r, True)
+      solCoarse = self.RestrictionSol(level, self.levels[level].solution)
+      solCoarse = self.levels[cl].AssignBCs(solCoarse, True)
+      axCoarse = self.levels[cl].Ax(solCoarse)
+      resCoarse = self.Restriction(level, r, True)
+      self.levels[cl].forcing = axCoarse + resCoarse
     self.FullMultigridCycle()
 
 
@@ -448,12 +476,12 @@ class mgSolution:
     # start at coarest grid and obtain solution
     # DEBUG - should do V cycle at finest grid?
     for level in range(self.numLevel - 1, -1, -1):
-      self.CycleAtLevel(level, self.levels[level].solution, True)
+      self.levels[level].solution = self.CycleAtLevel(level, self.levels[level].solution, True)
       # interpolate solution at level to next finest grid
       if level > 0:
-        self.HighOrderInterp(level)
-        #nodalSolution = self.levels[level].ToNodes()
-        #self.levels[level - 1].solution = self.Prolongation(
-        #    level, nodalSolution, self.levels[level - 1].solution, False)
+        #self.HighOrderInterp(level)
+        nodalSolution = self.levels[level].ToNodes()
+        self.levels[level - 1].solution = self.Prolongation(
+            level, nodalSolution, self.levels[level - 1].solution, False)
 
 
