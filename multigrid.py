@@ -404,8 +404,8 @@ class mgSolution:
         self.levels[fl].solution[xx, yy] = quad
 
 
-  def CycleAtLevel(self, fl, sol, isSolution):
-    sol = self.levels[fl].AssignBCs(sol, isSolution)
+  def CycleAtLevel(self, fl, sol):
+    sol = self.levels[fl].AssignBCs(sol, True)
     rhs = self.levels[fl].Rhs()
 
     if fl == self.numLevel - 1:
@@ -428,8 +428,7 @@ class mgSolution:
       # recursive call to next coarse level
       coarseCorrection = solCoarse.copy()
       for _ in range(0, self.CycleIndex()):
-        #coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, False)
-        coarseCorrection = self.CycleAtLevel(cl, coarseCorrection, True)
+        coarseCorrection = self.CycleAtLevel(cl, coarseCorrection)
       coarseCorrection = coarseCorrection - solCoarse
 
       # interpolate coarse level correction
@@ -442,7 +441,7 @@ class mgSolution:
 
 
   def MultigridCycle(self):
-    self.CycleAtLevel(0, self.levels[0].solution, True)
+    self.CycleAtLevel(0, self.levels[0].solution)
 
   def MultigridFCycle(self):
     # smooth and restrict down to coarsest grid
@@ -476,12 +475,13 @@ class mgSolution:
     # start at coarest grid and obtain solution
     # DEBUG - should do V cycle at finest grid?
     for level in range(self.numLevel - 1, -1, -1):
-      self.levels[level].solution = self.CycleAtLevel(level, self.levels[level].solution, True)
+      self.CycleAtLevel(level, self.levels[level].solution)
       # interpolate solution at level to next finest grid
       if level > 0:
         #self.HighOrderInterp(level)
+        fl = level - 1
         nodalSolution = self.levels[level].ToNodes()
-        self.levels[level - 1].solution = self.Prolongation(
-            level, nodalSolution, self.levels[level - 1].solution, False)
+        self.levels[fl].solution = self.Prolongation(
+            level, nodalSolution, self.levels[fl].solution, False)
 
 
