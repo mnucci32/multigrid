@@ -353,6 +353,7 @@ class mgSolution:
         coarse[xx, yy] = 0.25 * \
             (fine[2 * xx, 2 * yy] + fine[2 * xx - 1, 2 * yy] +
              fine[2 * xx, 2 * yy - 1] + fine[2 * xx - 1, 2 * yy - 1])
+    coarse = self.levels[ll + 1].AssignBCs(coarse, True)
     return coarse
 
   def Prolongation(self, ll, coarseCorrection, fine, cummulative):
@@ -420,10 +421,8 @@ class mgSolution:
           self.levels[fl].nu, self.levels[fl].area)
       cl = fl + 1
       solCoarse = self.RestrictionSol(fl, self.levels[fl].solution)
-      solCoarse = self.levels[cl].AssignBCs(solCoarse, True)
-      axCoarse = self.levels[cl].Ax(solCoarse)
-      resCoarse = self.Restriction(fl, r, True)
-      self.levels[cl].forcing = axCoarse + resCoarse
+      self.levels[cl].forcing = self.levels[cl].Ax(solCoarse) + \
+          self.Restriction(fl, r, True)
 
       # recursive call to next coarse level
       coarseCorrection = solCoarse.copy()
@@ -449,19 +448,17 @@ class mgSolution:
       #sol = self.levels[level].solution
 
       # pre-relaxation at fine level
-      self.levels[level].solution = GaussSeidel(self.levels[level].solution, self.levels[level].Rhs(), self.preRelaxationSweeps)
+      self.levels[level].solution = GaussSeidel(self.levels[level].solution, \
+          self.levels[level].Rhs(), self.preRelaxationSweeps)
 
       # coarse grid correction
       r = Residual(self.levels[level].solution, self.levels[level].forcing, \
           self.levels[level].nu, self.levels[level].area)
       cl = level + 1
       solCoarse = self.RestrictionSol(level, self.levels[level].solution)
-      solCoarse = self.levels[cl].AssignBCs(solCoarse, True)
-      axCoarse = self.levels[cl].Ax(solCoarse)
-      resCoarse = self.Restriction(level, r, True)
-      self.levels[cl].forcing = axCoarse + resCoarse
+      self.levels[cl].forcing = self.levels[cl].Ax(solCoarse) +\
+          self.Restriction(level, r, True)
     self.FullMultigridCycle()
-
 
 
   def FullMultigridCycle(self):
