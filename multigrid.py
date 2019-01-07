@@ -115,9 +115,9 @@ def CellsToNodes(cells, haveGhosts):
   return nodes
 
 def HeatFunction(relCoords, temp):
-  return 0.5 * temp * (np.sin(np.pi * relCoords[:,0]) + 1.0)
+  #return 0.5 * temp * (np.sin(np.pi * relCoords[:,0]) + 1.0)
   #return 0.5 * temp * relCoords[:,0] + 0.5 * temp
-  #return np.exp(relCoords[:,0]) * np.exp(-2.0 * relCoords[:,1])
+  return temp * np.exp(relCoords[:,0]) * np.exp(-2.0 * relCoords[:,1])
 
 
 class gridLevel:
@@ -264,11 +264,11 @@ class gridLevel:
     print("NODAL SOLUTION")
     print(self.ToNodes())
 
-  def Ax(self, sol):
+  def Ax(self):
     prod = np.zeros(self.forcing.shape)
     for xx in range(0, prod.shape[0]):
       for yy in range(0, prod.shape[1]):
-        prod[xx,yy] = self.nu * Laplacian(sol, xx + 1, yy + 1) / self.area
+        prod[xx,yy] = self.nu * Laplacian(self.solution, xx + 1, yy + 1) / self.area
     return prod
 
 class mgSolution:
@@ -343,7 +343,7 @@ class mgSolution:
              fine[2 * xx, 2 * yy + 1] + fine[2 * xx + 1, 2 * yy + 1])
     return coarse
 
-  def RestrictionSol(self, ll, fine):
+  def RestrictionSol(self, ll):
     # fine to coarse transfer
     # full weighting of cells
     # integral preserving so area factor is needed
@@ -351,8 +351,10 @@ class mgSolution:
     for xx in range(1, coarse.shape[0] - 1):
       for yy in range(1, coarse.shape[1] - 1):
         coarse[xx, yy] = 0.25 * \
-            (fine[2 * xx, 2 * yy] + fine[2 * xx - 1, 2 * yy] +
-             fine[2 * xx, 2 * yy - 1] + fine[2 * xx - 1, 2 * yy - 1])
+            (self.levels[ll].solution[2 * xx, 2 * yy] + \
+            self.levels[ll].solution[2 * xx - 1, 2 * yy] + \
+            self.levels[ll].solution[2 * xx, 2 * yy - 1] + \
+            self.levels[ll].solution[2 * xx - 1, 2 * yy - 1])
     coarse = self.levels[ll + 1].AssignBCs(coarse, True)
     return coarse
 
@@ -405,42 +407,40 @@ class mgSolution:
         self.levels[fl].solution[xx, yy] = quad
 
 
-  def CycleAtLevel(self, fl, sol):
-    sol = self.levels[fl].AssignBCs(sol, True)
+  def CycleAtLevel(self, fl):
+    self.levels[fl].AssignBCs(self.levels[fl].solution, True)
     rhs = self.levels[fl].Rhs()
 
     if fl == self.numLevel - 1:
       # at coarsest level - recursive base case
-      sol = GaussSeidel(sol, rhs, self.sweeps)
+      self.levels[fl].solution = GaussSeidel(self.levels[fl].solution, rhs, self.sweeps)
     else:
       # pre-relaxation at fine level
-      sol = GaussSeidel(sol, rhs, self.preRelaxationSweeps)
+      self.levels[fl].solution = GaussSeidel(self.levels[fl].solution, rhs, self.preRelaxationSweeps)
 
       # coarse grid correction
-      r = Residual(sol, self.levels[fl].forcing, \
+      r = Residual(self.levels[fl].solution, self.levels[fl].forcing, \
           self.levels[fl].nu, self.levels[fl].area)
       cl = fl + 1
-      solCoarse = self.RestrictionSol(fl, self.levels[fl].solution)
-      self.levels[cl].forcing = self.levels[cl].Ax(solCoarse) + \
+      self.levels[cl].solution = self.RestrictionSol(fl)
+      self.levels[cl].forcing = self.levels[cl].Ax() + \
           self.Restriction(fl, r, True)
+      solCoarse = self.levels[cl].solution.copy()
 
       # recursive call to next coarse level
-      coarseCorrection = solCoarse.copy()
       for _ in range(0, self.CycleIndex()):
-        coarseCorrection = self.CycleAtLevel(cl, coarseCorrection)
-      coarseCorrection = coarseCorrection - solCoarse
+        self.CycleAtLevel(cl)
+      coarseCorrection = self.levels[cl].solution - solCoarse
 
       # interpolate coarse level correction
-      sol = self.Prolongation(cl, coarseCorrection, sol, True)
+      self.levels[fl].solution = self.Prolongation(cl, coarseCorrection, self.levels[fl].solution, True)
       
       # post-relaxation at fine level
-      sol = GaussSeidel(sol, rhs, self.postRelaxationSweeps)
-
-    return sol
+      self.levels[fl].solution = GaussSeidel(self.levels[fl].solution, rhs, self.postRelaxationSweeps)
 
 
   def MultigridCycle(self):
-    self.CycleAtLevel(0, self.levels[0].solution)
+    self.CycleAtLevel(0)
 
   def MultigridFCycle(self):
     # smooth and restrict down to coarsest grid
@@ -455,8 +455,8 @@ class mgSolution:
       r = Residual(self.levels[level].solution, self.levels[level].forcing, \
           self.levels[level].nu, self.levels[level].area)
       cl = level + 1
-      solCoarse = self.RestrictionSol(level, self.levels[level].solution)
-      self.levels[cl].forcing = self.levels[cl].Ax(solCoarse) +\
+      self.levels[cl].solution = self.RestrictionSol(level)
+      self.levels[cl].forcing = self.levels[cl].Ax() +\
           self.Restriction(level, r, True)
     self.FullMultigridCycle()
 
@@ -472,7 +472,7 @@ class mgSolution:
     # start at coarest grid and obtain solution
     # DEBUG - should do V cycle at finest grid?
     for level in range(self.numLevel - 1, -1, -1):
-      self.CycleAtLevel(level, self.levels[level].solution)
+      self.CycleAtLevel(level)
       # interpolate solution at level to next finest grid
       if level > 0:
         #self.HighOrderInterp(level)
