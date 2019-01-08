@@ -54,6 +54,17 @@ def BiquadraticInterp(xsw, xs, xse, xw, xc, xe, xnw, xn, xne, sw, s, se, w, c, \
   interp, _ = QuadraticInterp(xl, xm, xu, lower, middle, upper, x, 1)
   return interp
 
+def InverseDistanceInterp(coords, data, x):
+  p = 12
+  denominator = 0.0
+  numerator = 0.0
+  for ii in range(0, coords.shape[0]):
+    diff = coords[ii,:] - x
+    denomPart = np.power(np.dot(diff, diff), p / 2)
+    denominator += 1.0 / denomPart
+    numerator += data[ii] / denomPart
+  return numerator / denominator
+
 def GaussSeidel(matrix, rhs, sweeps):
   # matrix BCs should already be set, so loop over interior only
   for _ in range(0, sweeps):
@@ -202,6 +213,9 @@ class gridLevel:
     self.solution = self.AssignBCs(self.solution, True)
     return Residual(self.solution, self.forcing, self.nu, self.area)
 
+  def Relax(self, sweeps):
+    self.solution = GaussSeidel(self.solution, self.Rhs(), sweeps)
+
   def ToNodes(self):
     # initialize nodal solution
     nodalSolution = np.zeros((self.numNodesX, self.numNodesY))
@@ -328,13 +342,12 @@ class mgSolution:
     resid = np.linalg.norm(r) / np.sqrt(len(r))
     return resid, np.max(np.abs(r))
 
-  def Restriction(self, ll, fine, useAreaFactor):
+  def Restriction(self, ll):
     # fine to coarse transfer
     # full weighting of cells
     # integral preserving so area factor is needed
-    factor = 1.0
-    if useAreaFactor:
-      factor = self.levels[ll].area / self.levels[ll + 1].area
+    factor = self.levels[ll].area / self.levels[ll + 1].area
+    fine = self.levels[ll].CalcResidual()
     coarse = np.zeros(self.levels[ll + 1].forcing.shape)
     for xx in range(0, coarse.shape[0]):
       for yy in range(0, coarse.shape[1]):
@@ -358,7 +371,7 @@ class mgSolution:
     coarse = self.levels[ll + 1].AssignBCs(coarse, True)
     return coarse
 
-  def Prolongation(self, ll, coarseCorrection, fine, cummulative):
+  def Prolongation(self, ll, coarseCorrection, cummulative):
     # coarse to fine transfer
     # solves the error equation - coarse grid error "prolonged" to fine grid
     # convert solution to node
@@ -376,11 +389,10 @@ class mgSolution:
             cc[xc, yc], cc[xc + 1, yc], cc[xc, yc + 1], cc[xc + 1, yc + 1], \
             self.prolongationCoeffs[ll - 1][xx, yy, :])
     if cummulative:
-      fine += correction
+      self.levels[ll - 1].solution += correction
     else:
-      fine = correction
-      fine = self.levels[ll-1].AssignBCs(fine, True)
-    return fine
+      self.levels[ll - 1].solution = correction
+      self.levels[ll - 1].AssignBCs(self.levels[ll - 1].solution, True)
 
   def HighOrderInterp(self, cl):
     fl = cl - 1
@@ -405,26 +417,91 @@ class mgSolution:
             pWest, pCenter, pEast, pNw, pNorth, pNe, sw, south, se, west, \
             center, east, nw, north, ne, self.levels[fl].centers[xx, yy,:])
         self.levels[fl].solution[xx, yy] = quad
+    self.levels[fl].AssignBCs(self.levels[fl].solution, True)
+
+  def HighOrderInterp2(self, cl):
+    fl = cl - 1
+    for xx in range(1, self.levels[fl].solution.shape[0] - 1):
+      for yy in range(1, self.levels[fl].solution.shape[1] - 1):
+        xc = (xx - 1) // 2
+        yc = (yy - 1) // 2
+
+        center = self.levels[cl].solution[xc, yc]
+        pCenter = self.levels[cl].centers[xc, yc,:]
+        west = self.levels[cl].solution[xc - 1, yc]
+        pWest = self.levels[cl].centers[xc - 1, yc, :]
+        east = self.levels[cl].solution[xc + 1, yc]
+        pEast = self.levels[cl].centers[xc + 1, yc, :]
+
+        south = self.levels[cl].solution[xc, yc - 1]
+        pSouth = self.levels[cl].centers[xc, yc - 1,:]
+        sw = self.levels[cl].solution[xc - 1, yc - 1]
+        pSw = self.levels[cl].centers[xc - 1, yc - 1, :]
+        se = self.levels[cl].solution[xc + 1, yc - 1]
+        pSe = self.levels[cl].centers[xc + 1, yc - 1, :]
+
+        north = self.levels[cl].solution[xc, yc + 1]
+        pNorth = self.levels[cl].centers[xc, yc + 1,:]
+        nw = self.levels[cl].solution[xc - 1, yc + 1]
+        pNw = self.levels[cl].centers[xc - 1, yc + 1, :]
+        ne = self.levels[cl].solution[xc + 1, yc + 1]
+        pNe = self.levels[cl].centers[xc + 1, yc + 1, :]
+
+        quad = BiquadraticInterp(pSw, pSouth, pSe, \
+            pWest, pCenter, pEast, pNw, pNorth, pNe, sw, south, se, west, \
+            center, east, nw, north, ne, self.levels[fl].centers[xx, yy,:])
+        self.levels[fl].solution[xx, yy] = quad
+    self.levels[fl].AssignBCs(self.levels[fl].solution, True)
+
+  def InverseDistanceInterp(self, cl):
+    fl = cl - 1
+    for xx in range(1, self.levels[fl].solution.shape[0] - 1):
+      for yy in range(1, self.levels[fl].solution.shape[1] - 1):
+        xc = (xx - 1) // 2
+        yc = (yy - 1) // 2
+
+        coords = np.zeros((9, 2))
+        coords[0,:] = self.levels[cl].centers[xc - 1, yc - 1,:]
+        coords[1,:] = self.levels[cl].centers[xc, yc - 1,:]
+        coords[2,:] = self.levels[cl].centers[xc + 1, yc - 1,:]
+        coords[3,:] = self.levels[cl].centers[xc - 1, yc,:]
+        coords[4,:] = self.levels[cl].centers[xc, yc,:]
+        coords[5,:] = self.levels[cl].centers[xc + 1, yc,:]
+        coords[6,:] = self.levels[cl].centers[xc - 1, yc + 1,:]
+        coords[7,:] = self.levels[cl].centers[xc, yc + 1,:]
+        coords[8,:] = self.levels[cl].centers[xc + 1, yc + 1,:]
+
+        data = np.zeros((9))
+        data[0] = self.levels[cl].solution[xc - 1, yc - 1]
+        data[1] = self.levels[cl].solution[xc, yc - 1]
+        data[2] = self.levels[cl].solution[xc + 1, yc - 1]
+        data[3] = self.levels[cl].solution[xc - 1, yc]
+        data[4] = self.levels[cl].solution[xc, yc]
+        data[5] = self.levels[cl].solution[xc + 1, yc]
+        data[6] = self.levels[cl].solution[xc - 1, yc + 1]
+        data[7] = self.levels[cl].solution[xc, yc + 1]
+        data[8] = self.levels[cl].solution[xc + 1, yc + 1]
+
+        invDist = InverseDistanceInterp(coords, data, \
+            self.levels[fl].centers[xx, yy,:])
+        self.levels[fl].solution[xx, yy] = invDist
+    self.levels[fl].AssignBCs(self.levels[fl].solution, True)
 
 
   def CycleAtLevel(self, fl):
     self.levels[fl].AssignBCs(self.levels[fl].solution, True)
-    rhs = self.levels[fl].Rhs()
 
     if fl == self.numLevel - 1:
       # at coarsest level - recursive base case
-      self.levels[fl].solution = GaussSeidel(self.levels[fl].solution, rhs, self.sweeps)
+      self.levels[fl].Relax(self.sweeps)
     else:
       # pre-relaxation at fine level
-      self.levels[fl].solution = GaussSeidel(self.levels[fl].solution, rhs, self.preRelaxationSweeps)
+      self.levels[fl].Relax(self.preRelaxationSweeps)
 
       # coarse grid correction
-      r = Residual(self.levels[fl].solution, self.levels[fl].forcing, \
-          self.levels[fl].nu, self.levels[fl].area)
       cl = fl + 1
       self.levels[cl].solution = self.RestrictionSol(fl)
-      self.levels[cl].forcing = self.levels[cl].Ax() + \
-          self.Restriction(fl, r, True)
+      self.levels[cl].forcing = self.levels[cl].Ax() + self.Restriction(fl)
       solCoarse = self.levels[cl].solution.copy()
 
       # recursive call to next coarse level
@@ -433,10 +510,10 @@ class mgSolution:
       coarseCorrection = self.levels[cl].solution - solCoarse
 
       # interpolate coarse level correction
-      self.levels[fl].solution = self.Prolongation(cl, coarseCorrection, self.levels[fl].solution, True)
+      self.Prolongation(cl, coarseCorrection, True)
       
       # post-relaxation at fine level
-      self.levels[fl].solution = GaussSeidel(self.levels[fl].solution, rhs, self.postRelaxationSweeps)
+      self.levels[fl].Relax(self.postRelaxationSweeps)
 
 
   def MultigridCycle(self):
@@ -445,40 +522,35 @@ class mgSolution:
   def MultigridFCycle(self):
     # smooth and restrict down to coarsest grid
     for level in range(0, self.numLevel - 1):
-      #sol = self.levels[level].solution
-
+      self.levels[level].AssignBCs(self.levels[level].solution, True)
       # pre-relaxation at fine level
-      self.levels[level].solution = GaussSeidel(self.levels[level].solution, \
-          self.levels[level].Rhs(), self.preRelaxationSweeps)
+      self.levels[level].Relax(self.preRelaxationSweeps)
 
       # coarse grid correction
-      r = Residual(self.levels[level].solution, self.levels[level].forcing, \
-          self.levels[level].nu, self.levels[level].area)
       cl = level + 1
       self.levels[cl].solution = self.RestrictionSol(level)
-      self.levels[cl].forcing = self.levels[cl].Ax() +\
-          self.Restriction(level, r, True)
+      self.levels[cl].forcing = self.levels[cl].Ax() + self.Restriction(level)
     self.FullMultigridCycle()
 
 
   def FullMultigridCycle(self):
     # DEBUG
     #for level in range(0, self.numLevel):
-    #  self.levels[level].forcing *= 1.0
+    #  self.levels[level].forcing *= 0.0
+    #  if level < self.numLevel - 1:
+    #    self.levels[level + 1].solution = self.RestrictionSol(level)
     #for level in range(0, self.numLevel - 1):
     #  interp = self.Restriction(level, self.levels[level].forcing, False)
     #  self.levels[level + 1].forcing = interp
 
     # start at coarest grid and obtain solution
-    # DEBUG - should do V cycle at finest grid?
     for level in range(self.numLevel - 1, -1, -1):
       self.CycleAtLevel(level)
       # interpolate solution at level to next finest grid
       if level > 0:
-        #self.HighOrderInterp(level)
-        fl = level - 1
-        nodalSolution = self.levels[level].ToNodes()
-        self.levels[fl].solution = self.Prolongation(
-            level, nodalSolution, self.levels[fl].solution, False)
+        self.HighOrderInterp2(level)
+        #self.InverseDistanceInterp(level)
+        #nodalSolution = self.levels[level].ToNodes()
+        #self.Prolongation(level, nodalSolution, False)
 
 
