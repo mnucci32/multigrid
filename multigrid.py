@@ -178,6 +178,17 @@ class gridLevel:
     else:
       return self.AssignCorrectionBCs(data)
 
+  def AssignSolutionBCs(self, sol):
+    sol[0, :] = HeatFunction(self.relCenters[0, :, 0],
+                             self.relCenters[0, :, 1], self.maxTemp)
+    sol[-1, :] = HeatFunction(self.relCenters[-1, :, 0],
+                              self.relCenters[-1, :, 1], self.maxTemp)
+    sol[:, 0] = HeatFunction(self.relCenters[:, 0, 0],
+                             self.relCenters[:, 0, 1], self.maxTemp)
+    sol[:, -1] = HeatFunction(self.relCenters[:, -1, 0],
+                              self.relCenters[:, -1, 1], self.maxTemp)
+    return sol
+
   def AssignCorrectionBCs(self, corr):
     rhs = self.Rhs()
     corr[0,:] = rhs[0,:]
