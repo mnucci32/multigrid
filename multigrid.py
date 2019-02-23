@@ -129,6 +129,7 @@ def HeatFunction(relX, relY, temp):
   #return 0.5 * temp * (np.sin(np.pi * relCoords[:,0]) + 1.0)
   #return 0.5 * temp * relCoords[:,0] + 0.5 * temp
   #return temp * np.exp(relCoords[:,0]) * np.exp(-2.0 * relCoords[:,1])
+  # exact solution from http://www.mgnet.org/mgnet/tutorials/xwb/example.html
   a = np.sinh(np.pi) * np.sin(np.pi / 2)
   return temp / a * np.sinh(np.pi * relX) * np.sin(np.pi * relY)
 
