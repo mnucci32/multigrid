@@ -125,10 +125,12 @@ def CellsToNodes(cells, haveGhosts):
             cells[xx - 1, yy - 1] + cells[xx, yy - 1])
   return nodes
 
-def HeatFunction(relCoords, temp):
+def HeatFunction(relX, relY, temp):
   #return 0.5 * temp * (np.sin(np.pi * relCoords[:,0]) + 1.0)
   #return 0.5 * temp * relCoords[:,0] + 0.5 * temp
-  return temp * np.exp(relCoords[:,0]) * np.exp(-2.0 * relCoords[:,1])
+  #return temp * np.exp(relCoords[:,0]) * np.exp(-2.0 * relCoords[:,1])
+  a = np.sinh(np.pi) * np.sin(np.pi / 2)
+  return temp / a * np.sinh(np.pi * relX) * np.sin(np.pi * relY)
 
 
 class gridLevel:
@@ -187,10 +189,10 @@ class gridLevel:
     return corr
 
   def AssignSolutionBCs(self, sol):
-    sol[0, :] = HeatFunction(self.relCenters[0, :], self.cornerTemp)
-    sol[-1, :] = HeatFunction(self.relCenters[-1, :], self.cornerTemp)
-    sol[:, 0] = HeatFunction(self.relCenters[:, 0], self.cornerTemp)
-    sol[:, -1] = HeatFunction(self.relCenters[:, -1], self.cornerTemp)
+    sol[0, :] = HeatFunction(self.relCenters[0, :, 0], self.relCenters[0, :, 1], self.cornerTemp)
+    sol[-1, :] = HeatFunction(self.relCenters[-1, :, 0], self.relCenters[-1, :, 1], self.cornerTemp)
+    sol[:, 0] = HeatFunction(self.relCenters[:, 0, 0], self.relCenters[:, 0, 1], self.cornerTemp)
+    sol[:, -1] = HeatFunction(self.relCenters[:, -1, 0], self.relCenters[:, -1, 1], self.cornerTemp)
     return sol
 
   def Rhs(self):
@@ -220,10 +222,10 @@ class gridLevel:
     # initialize nodal solution
     nodalSolution = np.zeros((self.numNodesX, self.numNodesY))
     # assign boundary conditions
-    nodalSolution[0,:] = HeatFunction(self.relCoords[0,:], self.cornerTemp)
-    nodalSolution[-1,:] = HeatFunction(self.relCoords[-1,:], self.cornerTemp)
-    nodalSolution[:, 0] = HeatFunction(self.relCoords[:,0], self.cornerTemp)
-    nodalSolution[:, -1] = HeatFunction(self.relCoords[:,-1], self.cornerTemp)
+    nodalSolution[0,:] = HeatFunction(self.relCoords[0,:,0], self.relCoords[0,:,1], self.cornerTemp)
+    nodalSolution[-1,:] = HeatFunction(self.relCoords[-1,:,0], self.relCoords[-1,:,1], self.cornerTemp)
+    nodalSolution[:, 0] = HeatFunction(self.relCoords[:,0,0], self.relCoords[:,0,1], self.cornerTemp)
+    nodalSolution[:, -1] = HeatFunction(self.relCoords[:,-1,0], self.relCoords[:,-1,1], self.cornerTemp)
     # loop over interior nodes
     for xx in range(1, self.numNodesX - 1):
       for yy in range(1, self.numNodesY - 1):
@@ -266,6 +268,19 @@ class gridLevel:
     ax.set_ylabel("Y (m)")
     ax.set_title(title)
     nodalSolution = self.ToNodes()
+    cf = ax.contourf(self.coords[:,:, 0], self.coords[:,:, 1], nodalSolution, \
+        levels=np.linspace(np.min(nodalSolution), np.max(nodalSolution), 11))
+    cbar = plt.colorbar(cf, ax=ax)
+    cbar.ax.set_ylabel("Temperature (K)")
+    ax.grid(True)
+
+  def PlotExact(self, ax):
+    ax.set_xlabel("X (m)")
+    ax.set_ylabel("Y (m)")
+    ax.set_title("Exact")
+    nodalSolution = HeatFunction(self.relCoords[:,:,0], self.relCoords[:,:,1], self.cornerTemp)
+    print(nodalSolution.shape)
+    print(self.coords[:,:,0].shape)
     cf = ax.contourf(self.coords[:,:, 0], self.coords[:,:, 1], nodalSolution, \
         levels=np.linspace(np.min(nodalSolution), np.max(nodalSolution), 11))
     cbar = plt.colorbar(cf, ax=ax)
@@ -333,6 +348,9 @@ class mgSolution:
 
   def PlotNode(self, ax, title):
     self.levels[0].PlotNode(ax, title)
+
+  def PlotExact(self, ax):
+    self.levels[0].PlotExact(ax)
 
   def Print(self):
     self.levels[0].Print()
@@ -535,10 +553,12 @@ class mgSolution:
 
   def FullMultigridCycle(self):
     # DEBUG
-    #for level in range(0, self.numLevel):
-    #  self.levels[level].forcing *= 0.0
-    #  if level < self.numLevel - 1:
-    #    self.levels[level + 1].solution = self.RestrictionSol(level)
+    #for level in range(0, self.numLevel - 1):
+    #  self.levels[level].AssignBCs(self.levels[level].solution, True)
+    #  cl = level + 1
+    #  self.levels[cl].solution = self.RestrictionSol(level)
+    #  self.levels[cl].forcing *= 0.0
+    #  self.levels[cl].forcing = self.levels[cl].Ax() + self.Restriction(level)
     #for level in range(0, self.numLevel - 1):
     #  interp = self.Restriction(level, self.levels[level].forcing, False)
     #  self.levels[level + 1].forcing = interp
@@ -548,9 +568,9 @@ class mgSolution:
       self.CycleAtLevel(level)
       # interpolate solution at level to next finest grid
       if level > 0:
-        self.HighOrderInterp2(level)
+        #self.HighOrderInterp2(level)
         #self.InverseDistanceInterp(level)
-        #nodalSolution = self.levels[level].ToNodes()
-        #self.Prolongation(level, nodalSolution, False)
+        nodalSolution = self.levels[level].ToNodes()
+        self.Prolongation(level, nodalSolution, False)
 
 
