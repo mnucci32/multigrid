@@ -13,7 +13,7 @@ class simulationData:
     tokens = options.ySpan.split()
     self.yc = np.linspace(float(tokens[0]), float(tokens[1]), int(tokens[2]))
     self.timeSteps = int(options.timeSteps)
-    self.cornerTemp = float(options.cornerTemp)
+    self.maxTemp = float(options.maxTemp)
     self.iteration = np.zeros((self.timeSteps + 1))
     self.iteration = range(0, self.timeSteps + 1)
     self.residualThreshold = float(options.threshold)
@@ -25,6 +25,8 @@ class simulationData:
     self.residuals = np.zeros((self.timeSteps + 1))
     self.times = np.zeros((self.timeSteps + 1))
     self.name = name
+    # sanity checks
+    self.SanityCheck()
 
   def LogResidual(self, nn, l2, linf):
     self.residuals[nn] = l2
@@ -45,5 +47,32 @@ class simulationData:
                 self.timeToThreshold, self.residuals[-1] / self.residuals[0]))
     else:
       print(self.name, "did not reach threshold")
+
+  def SanityCheck(self):
+    nx = len(self.xc)
+    ny = len(self.yc)
+    gridSizes = np.zeros((4, 2), dtype=int)
+    gridSizes[0, :] = [nx, ny]
+    # check that 3 additional grid levels are possible
+    for ii in range(1, 4):
+      if (nx - 1) % 2 != 0:
+        print("ERROR in grid refinement", ii, "for x dimension.")
+        print(nx, "- 1 is not divisible by 2")
+        print("Grid Level  X-Dimension")
+        for jj in range(0, ii):
+          print("    ", jj, "        ", gridSizes[jj, 0])
+        print("Please choose a dimension that can support 4 grid levels")
+        exit()
+      nx = (nx - 1) / 2 + 1
+      if (ny - 1) % 2 != 0:
+        print("ERROR in grid refinement", ii, "for y dimension.")
+        print(ny, "- 1 is not divisible by 2")
+        print("Grid Level  Y-Dimension")
+        for jj in range(0, ii):
+          print("    ", jj, "        ", gridSizes[jj, 1])
+        print("Please choose a dimension that can support 4 grid levels")
+        exit()
+      ny = (ny - 1) / 2 + 1
+      gridSizes[ii, :] = [nx, ny]
 
 

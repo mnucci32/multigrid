@@ -30,10 +30,9 @@ def main():
                     default="1.0e-10",
                     help="residual threshold to use for timing. " \
                     + "Default = 1e-10")
-  parser.add_option("-c", "--cornerTemperature", action="store",
-                    dest="cornerTemp",
-                    default="500",
-                    help="corner temperature to use as BC. " \
+  parser.add_option("-m", "--maxTemperature", action="store",
+                    dest="maxTemp", default="500",
+                    help="maximum temperature in domain. " \
                     + "Default = 500")
 
   options, remainder = parser.parse_args()
@@ -115,31 +114,31 @@ def main():
   print("-----------------------------------------")
   print("4 Level Full Multigrid W Cycle")
   print("-----------------------------------------")
-  fmg4vData = sd.simulationData(options, 4, "W", "4 Level FMG W")
+  fmg4wData = sd.simulationData(options, 4, "W", "4 Level FMG W")
   # construct grids
-  fmg4v = mg.mgSolution(fmg4vData)
+  fmg4w = mg.mgSolution(fmg4wData)
   # march solution in time
   print("Iteration        L2 Residual     Linf Residual       Time")
-  l2, linf = fmg4v.ResidNorm()
-  fmg4vData.LogResidual(0, l2, linf)
-  for nn in range(1, fmg4vData.timeSteps + 1):
+  l2, linf = fmg4w.ResidNorm()
+  fmg4wData.LogResidual(0, l2, linf)
+  for nn in range(1, fmg4wData.timeSteps + 1):
     if nn == 1:
-      fmg4v.FullMultigridCycle()
+      fmg4w.FullMultigridCycle()
     else:
-      fmg4v.MultigridCycle()
-    l2, linf = fmg4v.ResidNorm()
-    fmg4vData.LogResidual(nn, l2, linf)
+      fmg4w.MultigridCycle()
+    l2, linf = fmg4w.ResidNorm()
+    fmg4wData.LogResidual(nn, l2, linf)
   print("\n\n")
 
   # ------------------------------------------------------------------
   # plot solutions
   _, ax = plt.subplots(2, 3, figsize=(24, 12))
-  baseline.PlotNode(ax[0, 0], baselineData.name)
-  mg2v.PlotNode(ax[0, 1], mg2vData.name)
-  mg4v.PlotNode(ax[0, 2], mg4vData.name)
-  mg4w.PlotNode(ax[1, 0], mg4wData.name)
-  fmg4v.PlotNode(ax[1, 1], fmg4vData.name)
-  baseline.PlotExact(ax[1, 2])
+  baseline.PlotExact(ax[0, 0])
+  baseline.PlotNode(ax[0, 1], baselineData.name)
+  mg2v.PlotNode(ax[0, 2], mg2vData.name)
+  mg4v.PlotNode(ax[1, 0], mg4vData.name)
+  mg4w.PlotNode(ax[1, 1], mg4wData.name)
+  fmg4w.PlotNode(ax[1, 2], fmg4wData.name)
   plt.tight_layout()
   plt.show()
 
@@ -151,9 +150,9 @@ def main():
   ax[0].semilogy(mg2vData.iteration, mg2vData.NormResids(), "b", lw=3)
   ax[0].semilogy(mg4vData.iteration, mg4vData.NormResids(), "r", lw=3)
   ax[0].semilogy(mg4wData.iteration, mg4wData.NormResids(), "g", lw=3)
-  ax[0].semilogy(fmg4vData.iteration, fmg4vData.NormResids(), "c", lw=3)
+  ax[0].semilogy(fmg4wData.iteration, fmg4wData.NormResids(), "c", lw=3)
   ax[0].legend([baselineData.name, mg2vData.name, mg4vData.name,
-                   mg4wData.name, fmg4vData.name])
+                mg4wData.name, fmg4wData.name])
   ax[0].grid(True)
   # plot residual vs wall clock time
   ax[1].set_xlabel("Wall Clock Time (s)")
@@ -162,9 +161,9 @@ def main():
   ax[1].semilogy(mg2vData.times, mg2vData.NormResids(), "b", lw=3)
   ax[1].semilogy(mg4vData.times, mg4vData.NormResids(), "r", lw=3)
   ax[1].semilogy(mg4wData.times, mg4wData.NormResids(), "g", lw=3)
-  ax[1].semilogy(fmg4vData.times, fmg4vData.NormResids(), "c", lw=3)
+  ax[1].semilogy(fmg4wData.times, fmg4wData.NormResids(), "c", lw=3)
   ax[1].legend([baselineData.name, mg2vData.name, mg4vData.name,
-                   mg4wData.name, fmg4vData.name])
+                mg4wData.name, fmg4wData.name])
   ax[1].grid(True)
   plt.tight_layout()
   plt.show()
@@ -177,8 +176,7 @@ def main():
   mg2vData.PrintTimeToThreshold()
   mg4vData.PrintTimeToThreshold()
   mg4wData.PrintTimeToThreshold()
-  mg4fData.PrintTimeToThreshold()
-  fmg4vData.PrintTimeToThreshold()
+  fmg4wData.PrintTimeToThreshold()
 
 
 if __name__ == "__main__":
