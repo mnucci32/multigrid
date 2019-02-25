@@ -23,22 +23,28 @@ class simulationData:
     self.gridLevels = gridLevels
     self.cycleType = cycle
     self.residuals = np.zeros((self.timeSteps + 1))
+    self.error = np.zeros((self.timeSteps + 1))
     self.times = np.zeros((self.timeSteps + 1))
     self.name = name
     # sanity checks
     self.SanityCheck()
 
-  def LogResidual(self, nn, l2, linf):
+  def LogResidualAndError(self, nn, l2, linf, err):
     self.residuals[nn] = l2
+    self.error[nn] = err
     nresid = l2 / self.residuals[0]
     dt = time.time() - self.startingTime
     self.times[nn] = dt
-    print("{0:5d} {1:21.4e} {2:16.4e} {3:15.4e}".format(nn, nresid, linf, dt))
+    print("{0:5d} {1:21.4e} {2:16.4e} {3:15.4e} {4:15.4e}".format(
+        nn, nresid, linf, err, dt))
     if nresid <= self.residualThreshold and self.timeToThreshold < 0.0:
       self.timeToThreshold = time.time() - self.startingTime
 
   def NormResids(self):
     return self.residuals / self.residuals[0]
+
+  def PrintHeaders(self):
+    print("Iteration        L2 Residual     Linf Residual       Error           Time")
 
   def PrintTimeToThreshold(self):
     if self.timeToThreshold > 0:

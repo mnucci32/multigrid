@@ -165,6 +165,8 @@ class gridLevel:
     self.maxTemp = maxTemp
     self.solution = np.zeros((xNum + 1, yNum + 1))
     self.forcing = np.zeros((xNum - 1, yNum - 1))
+    self.exact = HeatFunction(
+        self.relCenters[:, :, 0], self.relCenters[:, :, 1], self.maxTemp)
 
   def NumNodes(self):
     return self.numNodesX * self.numNodesY
@@ -285,7 +287,7 @@ class gridLevel:
     ax.set_ylabel("Y (m)")
     ax.set_title("Exact")
     nodalSolution = HeatFunction(
-        self.relCoords[:, :, 0], self.relCoords[:, :, 1], self.maxTemp)
+        self.relCoords[:,:, 0], self.relCoords[:,:, 1], self.maxTemp)
     cf = ax.contourf(self.coords[:,:, 0], self.coords[:,:, 1], nodalSolution, \
         levels=np.linspace(np.min(nodalSolution), np.max(nodalSolution), 11))
     cbar = plt.colorbar(cf, ax=ax)
@@ -365,6 +367,11 @@ class mgSolution:
     r = self.levels[0].CalcResidual()[:]
     resid = np.linalg.norm(r) / np.sqrt(len(r))
     return resid, np.max(np.abs(r))
+
+  def ErrorNorm(self):
+    err = (self.levels[0].solution[1:-1, 1:-1] - \
+        self.levels[0].exact[1:-1, 1:-1])[:]
+    return np.linalg.norm(err) / np.sqrt(len(err))
 
   def Restriction(self, ll):
     # fine to coarse transfer

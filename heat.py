@@ -46,13 +46,13 @@ def main():
   # construct grids
   baseline = mg.mgSolution(baselineData)
   # march solution in time
-  print("Iteration        L2 Residual     Linf Residual       Time")
+  baselineData.PrintHeaders()
   l2, linf = baseline.ResidNorm()
-  baselineData.LogResidual(0, l2, linf)
+  baselineData.LogResidualAndError(0, l2, linf, baseline.ErrorNorm())
   for nn in range(1, baselineData.timeSteps + 1):
     baseline.MultigridCycle()
     l2, linf = baseline.ResidNorm()
-    baselineData.LogResidual(nn, l2, linf)
+    baselineData.LogResidualAndError(nn, l2, linf, baseline.ErrorNorm())
   print("\n\n")
 
   # ------------------------------------------------------------------
@@ -64,13 +64,13 @@ def main():
   # construct grids
   mg2v = mg.mgSolution(mg2vData)
   # march solution in time
-  print("Iteration        L2 Residual     Linf Residual       Time")
+  mg2vData.PrintHeaders()
   l2, linf = mg2v.ResidNorm()
-  mg2vData.LogResidual(0, l2, linf)
+  mg2vData.LogResidualAndError(0, l2, linf, mg2v.ErrorNorm())
   for nn in range(1, mg2vData.timeSteps + 1):
     mg2v.MultigridCycle()
     l2, linf = mg2v.ResidNorm()
-    mg2vData.LogResidual(nn, l2, linf)
+    mg2vData.LogResidualAndError(nn, l2, linf, mg2v.ErrorNorm())
   print("\n\n")
 
   # ------------------------------------------------------------------
@@ -82,13 +82,13 @@ def main():
   # construct grids
   mg4v = mg.mgSolution(mg4vData)
   # march solution in time
-  print("Iteration        L2 Residual     Linf Residual       Time")
+  mg4vData.PrintHeaders()
   l2, linf = mg4v.ResidNorm()
-  mg4vData.LogResidual(0, l2, linf)
+  mg4vData.LogResidualAndError(0, l2, linf, mg4v.ErrorNorm())
   for nn in range(1, mg4vData.timeSteps + 1):
     mg4v.MultigridCycle()
     l2, linf = mg4v.ResidNorm()
-    mg4vData.LogResidual(nn, l2, linf)
+    mg4vData.LogResidualAndError(nn, l2, linf, mg4v.ErrorNorm())
   print("\n\n")
 
   # ------------------------------------------------------------------
@@ -100,13 +100,13 @@ def main():
   # construct grids
   mg4w = mg.mgSolution(mg4wData)
   # march solution in time
-  print("Iteration        L2 Residual     Linf Residual       Time")
+  mg4wData.PrintHeaders()
   l2, linf = mg4w.ResidNorm()
-  mg4wData.LogResidual(0, l2, linf)
+  mg4wData.LogResidualAndError(0, l2, linf, mg4w.ErrorNorm())
   for nn in range(1, mg4wData.timeSteps + 1):
     mg4w.MultigridCycle()
     l2, linf = mg4w.ResidNorm()
-    mg4wData.LogResidual(nn, l2, linf)
+    mg4wData.LogResidualAndError(nn, l2, linf, mg4w.ErrorNorm())
   print("\n\n")
 
   # ------------------------------------------------------------------
@@ -118,16 +118,16 @@ def main():
   # construct grids
   fmg4w = mg.mgSolution(fmg4wData)
   # march solution in time
-  print("Iteration        L2 Residual     Linf Residual       Time")
+  fmg4wData.PrintHeaders()  
   l2, linf = fmg4w.ResidNorm()
-  fmg4wData.LogResidual(0, l2, linf)
+  fmg4wData.LogResidualAndError(0, l2, linf, fmg4w.ErrorNorm())
   for nn in range(1, fmg4wData.timeSteps + 1):
     if nn == 1:
       fmg4w.FullMultigridCycle()
     else:
       fmg4w.MultigridCycle()
     l2, linf = fmg4w.ResidNorm()
-    fmg4wData.LogResidual(nn, l2, linf)
+    fmg4wData.LogResidualAndError(nn, l2, linf, fmg4w.ErrorNorm())
   print("\n\n")
 
   # ------------------------------------------------------------------
@@ -146,13 +146,14 @@ def main():
   # plot residual vs iteration
   ax[0].set_xlabel("Iteration")
   ax[0].set_ylabel("Normalized Residual")
-  ax[0].semilogy(baselineData.iteration, baselineData.NormResids(), "k", lw=3)
+  ax[0].semilogy(baselineData.iteration,
+                    baselineData.NormResids(), "k", lw=3)
   ax[0].semilogy(mg2vData.iteration, mg2vData.NormResids(), "b", lw=3)
   ax[0].semilogy(mg4vData.iteration, mg4vData.NormResids(), "r", lw=3)
   ax[0].semilogy(mg4wData.iteration, mg4wData.NormResids(), "g", lw=3)
   ax[0].semilogy(fmg4wData.iteration, fmg4wData.NormResids(), "c", lw=3)
   ax[0].legend([baselineData.name, mg2vData.name, mg4vData.name,
-                mg4wData.name, fmg4wData.name])
+                   mg4wData.name, fmg4wData.name])
   ax[0].grid(True)
   # plot residual vs wall clock time
   ax[1].set_xlabel("Wall Clock Time (s)")
@@ -163,7 +164,34 @@ def main():
   ax[1].semilogy(mg4wData.times, mg4wData.NormResids(), "g", lw=3)
   ax[1].semilogy(fmg4wData.times, fmg4wData.NormResids(), "c", lw=3)
   ax[1].legend([baselineData.name, mg2vData.name, mg4vData.name,
-                mg4wData.name, fmg4wData.name])
+                   mg4wData.name, fmg4wData.name])
+  ax[1].grid(True)
+  plt.tight_layout()
+  plt.show()
+
+  _, ax = plt.subplots(1, 2, figsize=(24, 12))
+  # plot error vs iteration
+  ax[0].set_xlabel("Iteration")
+  ax[0].set_ylabel("Error Norm")
+  ax[0].semilogy(baselineData.iteration,
+                    baselineData.error, "k", lw=3)
+  ax[0].semilogy(mg2vData.iteration, mg2vData.error, "b", lw=3)
+  ax[0].semilogy(mg4vData.iteration, mg4vData.error, "r", lw=3)
+  ax[0].semilogy(mg4wData.iteration, mg4wData.error, "g", lw=3)
+  ax[0].semilogy(fmg4wData.iteration, fmg4wData.error, "c", lw=3)
+  ax[0].legend([baselineData.name, mg2vData.name, mg4vData.name,
+                   mg4wData.name, fmg4wData.name])
+  ax[0].grid(True)
+  # plot error vs wall clock time
+  ax[1].set_xlabel("Wall Clock Time (s)")
+  ax[1].set_ylabel("Error Norm")
+  ax[1].semilogy(baselineData.times, baselineData.error, "k", lw=3)
+  ax[1].semilogy(mg2vData.times, mg2vData.error, "b", lw=3)
+  ax[1].semilogy(mg4vData.times, mg4vData.error, "r", lw=3)
+  ax[1].semilogy(mg4wData.times, mg4wData.error, "g", lw=3)
+  ax[1].semilogy(fmg4wData.times, fmg4wData.error, "c", lw=3)
+  ax[1].legend([baselineData.name, mg2vData.name, mg4vData.name,
+                   mg4wData.name, fmg4wData.name])
   ax[1].grid(True)
   plt.tight_layout()
   plt.show()
